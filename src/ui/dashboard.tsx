@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { render, Text, Box, useInput } from 'ink';
+import { render, Text, Box, useApp, useInput } from 'ink';
 import { spawn } from 'node:child_process';
 import { fetchLatestJenkinsStatus, type JenkinsStatus } from '../services/jenkins.js';
 import { fetchBitbucketPRs, type BitbucketPRStatus } from '../services/bitbucket.js';
@@ -44,9 +44,11 @@ function prStatusBadge(s: BitbucketPRStatus['approvalStatus']): { glyph: string;
 }
 
 const Dashboard: React.FC<Props> = ({ config }) => {
+  const { exit } = useApp();
   const [jenkins, setJenkins] = useState<JenkinsStatus[]>([]);
   const [prs, setPrs] = useState<BitbucketPRStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [panel, setPanel] = useState<Panel>('jenkins');
@@ -54,6 +56,7 @@ const Dashboard: React.FC<Props> = ({ config }) => {
   const [bitbucketIdx, setBitbucketIdx] = useState(0);
 
   const refresh = useCallback(async () => {
+    setRefreshing(true);
     try {
       const [j, p] = await Promise.all([
         fetchLatestJenkinsStatus(config),
@@ -67,6 +70,7 @@ const Dashboard: React.FC<Props> = ({ config }) => {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [config]);
 
@@ -89,7 +93,8 @@ const Dashboard: React.FC<Props> = ({ config }) => {
 
   useInput((input, key) => {
     if (input === 'q' || key.escape) {
-      process.exit(0);
+      exit();
+      return;
     }
     if (key.tab) {
       setPanel((p) => (p === 'jenkins' ? 'bitbucket' : 'jenkins'));
@@ -119,6 +124,13 @@ const Dashboard: React.FC<Props> = ({ config }) => {
     return <Text color="cyan">Loading status…</Text>;
   }
 
+  const failingBuilds = jenkins.filter((s) => s.result === 'FAILURE').length;
+  const needsWorkPRs = prs.filter((p) => p.approvalStatus === 'NEEDS_WORK').length;
+  const summaryParts: { text: string; color: string }[] = [];
+  if (failingBuilds > 0) summaryParts.push({ text: `${failingBuilds} failing builds`, color: 'red' });
+  if (needsWorkPRs > 0) summaryParts.push({ text: `${needsWorkPRs} PRs need work`, color: 'yellow' });
+  const allClear = !error && summaryParts.length === 0;
+
   return (
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1}>
@@ -126,6 +138,17 @@ const Dashboard: React.FC<Props> = ({ config }) => {
         {lastRefresh && (
           <Text dimColor>  ·  refreshed {lastRefresh.toLocaleTimeString()}</Text>
         )}
+        {refreshing && <Text color="cyan">  ·  refreshing…</Text>}
+      </Box>
+
+      <Box marginBottom={1}>
+        {allClear && <Text color="green">All clear ✓</Text>}
+        {summaryParts.map((part, i) => (
+          <React.Fragment key={part.text}>
+            {i > 0 && <Text dimColor>  ·  </Text>}
+            <Text color={part.color}>{part.text}</Text>
+          </React.Fragment>
+        ))}
       </Box>
 
       {error && (
@@ -149,8 +172,11 @@ const Dashboard: React.FC<Props> = ({ config }) => {
             return (
               <Box key={s.job}>
                 <Text color={isSelected ? 'magenta' : undefined}>{isSelected ? '▸ ' : '  '}</Text>
-                <Text color={buildResultColor(s.result)}>{buildResultGlyph(s.result)}</Text>
-                <Text> {s.job} #{s.number}</Text>
+                <Text color={buildResultColor(s.result)}>{buildResultGlyph(s.result)} </Text>
+                <Box flexGrow={1}>
+                  <Text wrap="truncate-end">{s.job}</Text>
+                </Box>
+                <Text dimColor> #{s.number}</Text>
               </Box>
             );
           })}
@@ -173,8 +199,10 @@ const Dashboard: React.FC<Props> = ({ config }) => {
               <Box key={pr.id}>
                 <Text color={isSelected ? 'magenta' : undefined}>{isSelected ? '▸ ' : '  '}</Text>
                 <Text color={badge.color}>{badge.glyph}</Text>
-                <Text color="cyan"> {pr.repo} #{pr.id}</Text>
-                <Text> {pr.title.slice(0, 28)}</Text>
+                <Text color="cyan"> {pr.repo} #{pr.id} </Text>
+                <Box flexGrow={1}>
+                  <Text wrap="truncate-end">{pr.title}</Text>
+                </Box>
               </Box>
             );
           })}
