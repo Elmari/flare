@@ -10,7 +10,7 @@
 - **Jenkins-Watch**: Sofortige Meldung, wenn einer DEINER Builds fehlschlägt — auch über Multibranch-Projekte hinweg, ohne jeden Branch zu konfigurieren.
 - **Identity-Filter**: Erkennt automatisch, welche Builds/PRs dich betreffen (Trigger-User, Commit-Author oder Reviewer-Rolle).
 - **Notification-Cooldown**: 4h-Cooldown pro Event verhindert Spam bei flapping Status (NEEDS_WORK → UNAPPROVED → NEEDS_WORK).
-- **TUI Dashboard**: Terminal-UI mit Auto-Refresh, Tastatur-Navigation, Build-Trend-Sparkline (`✓✓✗✓✗`) und „im Browser öffnen".
+- **TUI Dashboard**: Terminal-UI mit Auto-Refresh, Tastatur-Navigation, Build-Trend-Sparkline (`✓✓✗✓✗`), Watcher-Heartbeat-Anzeige und „im Browser öffnen".
 - **AI-Analyse on demand**: Optional — `a` im Dashboard analysiert einen Build-Fail oder fasst einen PR-Diff via LLM zusammen.
 - **Batterie-schonend**: Passt das Abfrage-Intervall auf dem MacBook automatisch an, wenn du nicht am Strom hängst.
 - **Enterprise-Ready**: Unterstützt Proxies und Custom CAs (`HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`).

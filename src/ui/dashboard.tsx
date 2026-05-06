@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { render, Text, Box, useApp, useInput } from 'ink';
 import { spawn } from 'node:child_process';
+import Conf from 'conf';
 import { fetchLatestJenkinsStatus, type JenkinsStatus } from '../services/jenkins.js';
 import { fetchBitbucketPRs, type BitbucketPRStatus } from '../services/bitbucket.js';
 import {
@@ -10,7 +11,10 @@ import {
   type AnalysisResult,
   type PRSummaryResponse,
 } from '../llm.js';
+import { classifyHealth, relativeAge, type WatcherHealth } from '../health.js';
 import type { Config } from '../config.js';
+
+const store = new Conf({ projectName: 'flare' });
 
 interface Props {
   config: Config;
@@ -75,9 +79,11 @@ const Dashboard: React.FC<Props> = ({ config }) => {
   const [jenkinsIdx, setJenkinsIdx] = useState(0);
   const [bitbucketIdx, setBitbucketIdx] = useState(0);
   const [detail, setDetail] = useState<DetailState | null>(null);
+  const [health, setHealth] = useState<WatcherHealth>({ state: 'unknown' });
   const analysisCache = useRef<Map<string, DetailContent>>(new Map());
 
   const llmEnabled = Boolean(config.llm);
+  const staleAfterMs = 2 * config.settings.battery_poll_interval_seconds * 1000;
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -95,8 +101,10 @@ const Dashboard: React.FC<Props> = ({ config }) => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      const lastPollAt = store.get('last_poll_at') as number | undefined;
+      setHealth(classifyHealth(lastPollAt, Date.now(), staleAfterMs));
     }
-  }, [config]);
+  }, [config, staleAfterMs]);
 
   useEffect(() => {
     refresh();
@@ -279,6 +287,15 @@ const Dashboard: React.FC<Props> = ({ config }) => {
           <Text dimColor>  ·  refreshed {lastRefresh.toLocaleTimeString()}</Text>
         )}
         {refreshing && <Text color="cyan">  ·  refreshing…</Text>}
+        {health.state === 'fresh' && (
+          <Text dimColor>  ·  watcher: {relativeAge(health.ageMs)}</Text>
+        )}
+        {health.state === 'stale' && (
+          <Text color="yellow">  ·  ⚠ watcher stale ({relativeAge(health.ageMs)})</Text>
+        )}
+        {health.state === 'unknown' && (
+          <Text color="red">  ·  ✗ watcher not running</Text>
+        )}
       </Box>
 
       <Box marginBottom={1}>

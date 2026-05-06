@@ -69,6 +69,7 @@ async function pollAll(config: Config): Promise<void> {
   ]);
 
   store.set('notified', notified);
+  store.set('last_poll_at', now);
 }
 
 async function pollJenkins(
