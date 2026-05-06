@@ -68,3 +68,26 @@ export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStat
   // Deduplicate by ID
   return Array.from(new Map(prs.map(p => [p.id, p])).values());
 }
+
+export interface PRDiff {
+  text: string;
+  truncated: boolean;
+}
+
+export async function fetchPRDiff(config: Config, repo: string, prId: number, maxBytes: number): Promise<PRDiff> {
+  const cfg = config.sources.bitbucket;
+  if (!cfg || !cfg.enabled) throw new Error('Bitbucket source disabled');
+
+  const [projectKey, slug] = repo.split('/');
+  if (!projectKey || !slug) throw new Error(`invalid repo identifier: ${repo}`);
+
+  const pat = readEnvSecret(cfg.pat_env);
+  const headers = { ...bearer(pat), accept: 'text/plain' };
+  const url = `${cfg.base_url.replace(/\/$/, '')}/rest/api/1.0/projects/${encodeURIComponent(projectKey)}/repos/${encodeURIComponent(slug)}/pull-requests/${prId}/diff`;
+
+  const text = await request<string>(url, { headers });
+  if (text.length <= maxBytes) {
+    return { text, truncated: false };
+  }
+  return { text: text.slice(0, maxBytes), truncated: true };
+}

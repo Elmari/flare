@@ -25,7 +25,15 @@ const BitbucketConfigSchema = z.object({
   ignored_authors: z.array(z.string()).default([]),
 });
 
-// TODO: Future Proactive Agent: add LLM configuration for failure analysis
+export const LlmConfigSchema = z.object({
+  endpoint: z.string().url(),
+  api_key_env: z.string().default('GEMINI_API_KEY'),
+  model: z.string().default('gemini-2.5-flash'),
+  custom_headers: z.record(z.string()).optional(),
+  max_log_kb: z.number().int().min(1).max(200).default(30),
+  max_diff_kb: z.number().int().min(1).max(500).default(50),
+});
+
 export const ConfigSchema = z.object({
   identity: z.object({
     username: z.string(),
@@ -35,6 +43,7 @@ export const ConfigSchema = z.object({
     jenkins: JenkinsConfigSchema.optional(),
     bitbucket: BitbucketConfigSchema.optional(),
   }),
+  llm: LlmConfigSchema.optional(),
   settings: z.object({
     poll_interval_seconds: z.number().int().min(30).default(120),
     battery_poll_interval_seconds: z.number().int().min(60).default(600),
@@ -102,4 +111,16 @@ settings:
   dashboard_refresh_seconds: 30
   notify_on_build_success: false
   notify_on_review_requested: true
+
+# Optional: enable on-demand AI analysis ('a' in the dashboard).
+# Works with any OpenAI-compatible chat completions endpoint
+# (Gemini OpenAI mode, OpenRouter, Anthropic proxies, OpenAI, Ollama, ...).
+# Heads up: the build log / PR diff is sent to this endpoint — only
+# enable it for endpoints you trust with that data.
+# llm:
+#   endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+#   api_key_env: GEMINI_API_KEY
+#   model: gemini-2.5-flash
+#   max_log_kb: 30
+#   max_diff_kb: 50
 `;

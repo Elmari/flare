@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ConfigSchema } from '../src/config.js';
+import { ConfigSchema, LlmConfigSchema } from '../src/config.js';
 
 test('ConfigSchema accepts a minimal valid config and applies defaults', () => {
   const parsed = ConfigSchema.parse({
@@ -83,4 +83,42 @@ test('ConfigSchema rejects missing identity.username', () => {
       settings: {},
     }),
   );
+});
+
+test('LlmConfigSchema applies sensible defaults when only the endpoint is given', () => {
+  const parsed = LlmConfigSchema.parse({
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  });
+  assert.equal(parsed.api_key_env, 'GEMINI_API_KEY');
+  assert.equal(parsed.model, 'gemini-2.5-flash');
+  assert.equal(parsed.max_log_kb, 30);
+  assert.equal(parsed.max_diff_kb, 50);
+});
+
+test('LlmConfigSchema rejects a missing endpoint', () => {
+  assert.throws(() => LlmConfigSchema.parse({ api_key_env: 'X' }));
+});
+
+test('LlmConfigSchema accepts custom headers and overridden limits', () => {
+  const parsed = LlmConfigSchema.parse({
+    endpoint: 'https://gateway.firma.de/llm',
+    api_key_env: 'CORP_LLM_KEY',
+    model: 'claude-sonnet-4-6',
+    custom_headers: { 'x-tenant': 'team-x' },
+    max_log_kb: 100,
+    max_diff_kb: 200,
+  });
+  assert.equal(parsed.model, 'claude-sonnet-4-6');
+  assert.deepEqual(parsed.custom_headers, { 'x-tenant': 'team-x' });
+  assert.equal(parsed.max_log_kb, 100);
+});
+
+test('ConfigSchema accepts an optional llm block', () => {
+  const parsed = ConfigSchema.parse({
+    identity: { username: 'alice' },
+    sources: {},
+    llm: { endpoint: 'https://example.com/v1' },
+    settings: {},
+  });
+  assert.equal(parsed.llm?.endpoint, 'https://example.com/v1');
 });

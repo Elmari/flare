@@ -112,4 +112,22 @@ function jobApiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${segments.join('/')}/api/json`;
 }
 
-// TODO: Future Proactive Agent: fetch consoleText and use LLM for failure analysis
+export interface BuildLog {
+  text: string;
+  truncated: boolean;
+}
+
+export async function fetchBuildLog(config: Config, buildUrl: string, maxBytes: number): Promise<BuildLog> {
+  const cfg = config.sources.jenkins;
+  if (!cfg || !cfg.enabled) throw new Error('Jenkins source disabled');
+
+  const apiToken = readEnvSecret(cfg.api_token_env);
+  const headers = { ...basic(cfg.username, apiToken) };
+  const url = `${buildUrl.replace(/\/$/, '')}/consoleText`;
+
+  const text = await request<string>(url, { headers });
+  if (text.length <= maxBytes) {
+    return { text, truncated: false };
+  }
+  return { text: text.slice(text.length - maxBytes), truncated: true };
+}

@@ -11,6 +11,7 @@
 - **Identity-Filter**: Erkennt automatisch, welche Builds/PRs dich betreffen (Trigger-User, Commit-Author oder Reviewer-Rolle).
 - **Notification-Cooldown**: 4h-Cooldown pro Event verhindert Spam bei flapping Status (NEEDS_WORK → UNAPPROVED → NEEDS_WORK).
 - **TUI Dashboard**: Terminal-UI mit Auto-Refresh, Tastatur-Navigation und „im Browser öffnen".
+- **AI-Analyse on demand**: Optional — `a` im Dashboard analysiert einen Build-Fail oder fasst einen PR-Diff via LLM zusammen.
 - **Batterie-schonend**: Passt das Abfrage-Intervall auf dem MacBook automatisch an, wenn du nicht am Strom hängst.
 - **Enterprise-Ready**: Unterstützt Proxies und Custom CAs (`HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`).
 
@@ -32,13 +33,14 @@ cp .env.example .env # Tokens eintragen
 
 ### Dashboard-Shortcuts
 
-| Taste         | Wirkung                                 |
-| ------------- | --------------------------------------- |
-| `↑` / `↓`     | Eintrag im aktiven Panel auswählen      |
-| `Tab`         | zwischen Jenkins / Bitbucket wechseln   |
-| `o` / `Enter` | ausgewählten Eintrag im Browser öffnen  |
-| `r`           | Refresh erzwingen                       |
-| `q` / `Esc`   | beenden                                 |
+| Taste         | Wirkung                                            |
+| ------------- | -------------------------------------------------- |
+| `↑` / `↓`     | Eintrag im aktiven Panel auswählen                 |
+| `Tab`         | zwischen Jenkins / Bitbucket wechseln              |
+| `o` / `Enter` | ausgewählten Eintrag im Browser öffnen             |
+| `a`           | KI-Analyse für markierten Eintrag (siehe AI-Setup) |
+| `r`           | Refresh erzwingen                                  |
+| `q` / `Esc`   | Detail schließen bzw. beenden                      |
 
 ## Konfiguration
 
@@ -90,10 +92,37 @@ settings:
 
 Ein 4h-Cooldown pro `(Event, ID)` verhindert Wiederholungs-Notifications bei flapping Status.
 
+## AI-Analyse (optional)
+
+Im Dashboard fasst `a` auf einem markierten Eintrag den Kontext via LLM zusammen:
+
+- **Build-Failure** → Console-Log wird gefetched, an den LLM geschickt, Antwort als Summary + likely cause + (wenn ableitbar) Fix-Hint angezeigt.
+- **PR-Review** → Diff wird gefetched und als Summary + key files + review focus aufbereitet.
+
+Das Feature ist **standardmäßig aus**. Aktivieren über einen `llm:`-Block in `~/.config/flare/config.yaml`:
+
+```yaml
+llm:
+  endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+  api_key_env: GEMINI_API_KEY
+  model: gemini-2.5-flash
+  # custom_headers:        # optional, für Corporate-Gateways
+  #   x-tenant: team-x
+  max_log_kb: 30           # Console-Log wird auf die letzten N KB beschränkt
+  max_diff_kb: 50          # PR-Diff wird auf die ersten N KB beschränkt
+```
+
+Erwartet wird ein **OpenAI-kompatibler `POST /v1/chat/completions`**-Endpoint. Funktioniert mit Gemini (OpenAI-Mode), OpenAI selbst, OpenRouter, Anthropic-Proxies, Corporate-Gateways oder Ollama. Auth läuft über den `api_key_env`-Env-Var (Bearer-Token), zusätzliche Header lassen sich frei ergänzen.
+
+**Datenschutz-Hinweis**: Bei jedem Druck auf `a` wird der **vollständige (truncated) Build-Log** bzw. **PR-Diff** an deinen konfigurierten Endpoint geschickt. Verwende kein öffentliches LLM für Repos mit sensitiven Inhalten — ein internes Gateway oder lokales Ollama ist die sichere Variante. Der Watcher selbst (`flare watch`) macht **keine** LLM-Calls.
+
+Analyse-Ergebnisse werden für die Dauer der TUI-Session in-memory gecached; mehrfaches `a` auf denselben Build/PR verbrennt keine Tokens. Bei TUI-Restart wird neu analysiert.
+
 ## Architektur
 
 - [src/watcher.ts](src/watcher.ts): Polling, Diffing, Notification-Dispatch.
 - [src/ui/dashboard.tsx](src/ui/dashboard.tsx): Ink-basiertes Terminal-UI (`flare status`).
 - [src/services/jenkins.ts](src/services/jenkins.ts) und [src/services/bitbucket.ts](src/services/bitbucket.ts): API-Adapter mit Zod-Validierung.
+- [src/llm.ts](src/llm.ts): OpenAI-kompatibler Chat-Client + Prompt-Builder + Antwort-Schemas für die `a`-Aktion.
 - [src/dedup.ts](src/dedup.ts): Notification-Cooldown-Logik mit Tests in [tests/dedup.test.ts](tests/dedup.test.ts).
 - `assets/flare.svg` ist die Quelle für das App-Icon. `npm run build:icon` rendert daraus `assets/flare.png`, das `node-notifier` für Toasts verwendet.

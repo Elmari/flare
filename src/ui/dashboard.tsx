@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { render, Text, Box, useApp, useInput } from 'ink';
 import { spawn } from 'node:child_process';
 import { fetchLatestJenkinsStatus, type JenkinsStatus } from '../services/jenkins.js';
 import { fetchBitbucketPRs, type BitbucketPRStatus } from '../services/bitbucket.js';
+import {
+  analyzeBuildFailure,
+  summarizePR,
+  type AnalysisResponse,
+  type AnalysisResult,
+  type PRSummaryResponse,
+} from '../llm.js';
 import type { Config } from '../config.js';
 
 interface Props {
@@ -10,6 +17,19 @@ interface Props {
 }
 
 type Panel = 'jenkins' | 'bitbucket';
+
+type DetailContent =
+  | { kind: 'build'; data: AnalysisResponse }
+  | { kind: 'pr'; data: PRSummaryResponse }
+  | { kind: 'raw'; raw: string; error: string };
+
+interface DetailState {
+  title: string;
+  url: string;
+  loading: boolean;
+  error: string | null;
+  content: DetailContent | null;
+}
 
 function openInBrowser(url: string): void {
   if (!url) return;
@@ -54,6 +74,10 @@ const Dashboard: React.FC<Props> = ({ config }) => {
   const [panel, setPanel] = useState<Panel>('jenkins');
   const [jenkinsIdx, setJenkinsIdx] = useState(0);
   const [bitbucketIdx, setBitbucketIdx] = useState(0);
+  const [detail, setDetail] = useState<DetailState | null>(null);
+  const analysisCache = useRef<Map<string, DetailContent>>(new Map());
+
+  const llmEnabled = Boolean(config.llm);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -91,9 +115,88 @@ const Dashboard: React.FC<Props> = ({ config }) => {
     }
   }, [prs.length, bitbucketIdx]);
 
+  const startAnalysis = useCallback(async () => {
+    if (!llmEnabled) return;
+
+    if (panel === 'jenkins') {
+      const build = jenkins[jenkinsIdx];
+      if (!build) return;
+      const cacheKey = `build:${build.job}:${build.number}`;
+      const title = `Build analysis · ${build.job} #${build.number}`;
+      const cached = analysisCache.current.get(cacheKey);
+      if (cached) {
+        setDetail({ title, url: build.url, loading: false, error: null, content: cached });
+        return;
+      }
+      setDetail({ title, url: build.url, loading: true, error: null, content: null });
+      try {
+        const result: AnalysisResult<AnalysisResponse> = await analyzeBuildFailure(config, build);
+        const content: DetailContent = result.ok
+          ? { kind: 'build', data: result.response }
+          : { kind: 'raw', raw: result.raw, error: result.error };
+        analysisCache.current.set(cacheKey, content);
+        setDetail({ title, url: build.url, loading: false, error: null, content });
+      } catch (err) {
+        setDetail({
+          title,
+          url: build.url,
+          loading: false,
+          error: (err as Error).message,
+          content: null,
+        });
+      }
+      return;
+    }
+
+    const pr = prs[bitbucketIdx];
+    if (!pr) return;
+    const cacheKey = `pr:${pr.id}:${pr.updatedDate}`;
+    const title = `PR summary · ${pr.repo} #${pr.id}`;
+    const cached = analysisCache.current.get(cacheKey);
+    if (cached) {
+      setDetail({ title, url: pr.url, loading: false, error: null, content: cached });
+      return;
+    }
+    setDetail({ title, url: pr.url, loading: true, error: null, content: null });
+    try {
+      const result: AnalysisResult<PRSummaryResponse> = await summarizePR(config, pr);
+      const content: DetailContent = result.ok
+        ? { kind: 'pr', data: result.response }
+        : { kind: 'raw', raw: result.raw, error: result.error };
+      analysisCache.current.set(cacheKey, content);
+      setDetail({ title, url: pr.url, loading: false, error: null, content });
+    } catch (err) {
+      setDetail({
+        title,
+        url: pr.url,
+        loading: false,
+        error: (err as Error).message,
+        content: null,
+      });
+    }
+  }, [config, panel, jenkins, jenkinsIdx, prs, bitbucketIdx, llmEnabled]);
+
   useInput((input, key) => {
-    if (input === 'q' || key.escape) {
+    if (input === 'q') {
       exit();
+      return;
+    }
+    if (key.escape) {
+      if (detail) {
+        setDetail(null);
+        return;
+      }
+      exit();
+      return;
+    }
+    if (detail) {
+      if (input === 'a') {
+        setDetail(null);
+        return;
+      }
+      if (input === 'o') {
+        if (detail.url) openInBrowser(detail.url);
+      }
       return;
     }
     if (key.tab) {
@@ -102,6 +205,10 @@ const Dashboard: React.FC<Props> = ({ config }) => {
     }
     if (input === 'r') {
       refresh();
+      return;
+    }
+    if (input === 'a') {
+      startAnalysis();
       return;
     }
     if (key.upArrow) {
@@ -122,6 +229,39 @@ const Dashboard: React.FC<Props> = ({ config }) => {
 
   if (loading && !lastRefresh) {
     return <Text color="cyan">Loading status…</Text>;
+  }
+
+  if (detail) {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Box marginBottom={1}>
+          <Text bold color="cyan">{detail.title}</Text>
+        </Box>
+        <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
+          {detail.loading && (
+            <Text color="cyan">Analyzing… (this can take a few seconds)</Text>
+          )}
+          {detail.error && (
+            <Box flexDirection="column">
+              <Text color="red">Error: {detail.error}</Text>
+              <Text dimColor>Check llm.endpoint, llm.api_key_env, and network access.</Text>
+            </Box>
+          )}
+          {detail.content?.kind === 'build' && (
+            <BuildAnalysisView data={detail.content.data} />
+          )}
+          {detail.content?.kind === 'pr' && (
+            <PRSummaryView data={detail.content.data} />
+          )}
+          {detail.content?.kind === 'raw' && (
+            <RawAnalysisView raw={detail.content.raw} error={detail.content.error} />
+          )}
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Esc/a back  ·  o open in browser  ·  q quit</Text>
+        </Box>
+      </Box>
+    );
   }
 
   const failingBuilds = jenkins.filter((s) => s.result === 'FAILURE').length;
@@ -211,12 +351,61 @@ const Dashboard: React.FC<Props> = ({ config }) => {
 
       <Box marginTop={1}>
         <Text dimColor>
-          ↑↓ select  ·  Tab switch  ·  o/Enter open  ·  r refresh  ·  q quit
+          ↑↓ select  ·  Tab switch  ·  o/Enter open  ·{' '}
         </Text>
+        {llmEnabled
+          ? <Text dimColor>a analyze  ·  </Text>
+          : <Text dimColor color="gray">a analyze (llm not configured)  ·  </Text>}
+        <Text dimColor>r refresh  ·  q quit</Text>
       </Box>
     </Box>
   );
 };
+
+const BuildAnalysisView: React.FC<{ data: AnalysisResponse }> = ({ data }) => (
+  <Box flexDirection="column">
+    <Text bold>Summary</Text>
+    <Text>{data.summary}</Text>
+    {data.likely_cause && (
+      <>
+        <Box marginTop={1}><Text bold>Likely cause</Text></Box>
+        <Text>{data.likely_cause}</Text>
+      </>
+    )}
+    {data.fix_hint && (
+      <>
+        <Box marginTop={1}><Text bold color="green">Fix hint</Text></Box>
+        <Text>{data.fix_hint}</Text>
+      </>
+    )}
+  </Box>
+);
+
+const PRSummaryView: React.FC<{ data: PRSummaryResponse }> = ({ data }) => (
+  <Box flexDirection="column">
+    <Text bold>Summary</Text>
+    <Text>{data.summary}</Text>
+    {data.key_files && data.key_files.length > 0 && (
+      <>
+        <Box marginTop={1}><Text bold>Key files</Text></Box>
+        {data.key_files.map((f) => <Text key={f}>· {f}</Text>)}
+      </>
+    )}
+    {data.review_focus && (
+      <>
+        <Box marginTop={1}><Text bold color="yellow">Review focus</Text></Box>
+        <Text>{data.review_focus}</Text>
+      </>
+    )}
+  </Box>
+);
+
+const RawAnalysisView: React.FC<{ raw: string; error: string }> = ({ raw, error }) => (
+  <Box flexDirection="column">
+    <Text color="yellow">Could not parse structured response ({error}). Raw output:</Text>
+    <Box marginTop={1}><Text>{raw}</Text></Box>
+  </Box>
+);
 
 export function runDashboard(config: Config) {
   render(<Dashboard config={config} />);
