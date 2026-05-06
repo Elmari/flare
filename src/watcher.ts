@@ -98,7 +98,7 @@ async function pollJenkins(
         markNotified(key, notified, now);
       }
     } else if (s.result === 'SUCCESS') {
-      const isFixed = prev.result === 'FAILURE';
+      const isFixed = prev.result === 'FAILURE' || prev.result === 'UNSTABLE';
       if (isFixed) {
         const key = `build:${s.job}:${s.number}:FIXED`;
         if (shouldNotify(key, notified, now)) {
@@ -152,7 +152,9 @@ async function pollBitbucket(
       }
     } else if (pr.approvalStatus === 'APPROVED') {
       const key = `pr:${pr.id}:APPROVED`;
-      if (shouldNotify(key, notified, now)) {
+      // Only notify if I am the author (someone else approved my PR).
+      // If I am NOT the author and it's APPROVED, it means I just approved it.
+      if (pr.iAmAuthor && shouldNotify(key, notified, now)) {
         notify('PR Approved ✅', `PR #${pr.id} in ${pr.repo} was approved.`);
         markNotified(key, notified, now);
       }
