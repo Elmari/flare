@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const LABEL = 'com.flare.watcher';
 
@@ -68,10 +69,10 @@ export function installAgent(): void {
   }
 
   const nodeBin = process.execPath;
-  const flareEntry = process.argv[1];
-  if (!flareEntry || !flareEntry.endsWith('.js')) {
+  const flareEntry = fileURLToPath(new URL('./index.js', import.meta.url));
+  if (!existsSync(flareEntry)) {
     throw new Error(
-      'Could not resolve the flare entry script (expected dist/index.js).\n' +
+      `Could not find the flare entry at ${flareEntry}.\n` +
       '  Run `npm run build && npm link` first, then re-run `flare install-agent`.',
     );
   }
