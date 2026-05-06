@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { Command } from 'commander';
+
+loadDotenv();
+loadDotenv({ path: join(homedir(), '.config', 'flare', '.env') });
 
 const program = new Command();
 program
@@ -45,6 +50,32 @@ program
   .action(async () => {
     const { startWatcher } = await import('./watcher.js');
     await startWatcher();
+  });
+
+program
+  .command('install-agent')
+  .description('Install a macOS LaunchAgent that runs `flare watch` on login')
+  .action(async () => {
+    try {
+      const { installAgent } = await import('./agent.js');
+      installAgent();
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('uninstall-agent')
+  .description('Unload and remove the macOS LaunchAgent')
+  .action(async () => {
+    try {
+      const { uninstallAgent } = await import('./agent.js');
+      uninstallAgent();
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
   });
 
 program.parseAsync(process.argv);

@@ -10,7 +10,7 @@
 - **Jenkins-Watch**: Sofortige Meldung, wenn einer DEINER Builds fehlschlägt — auch über Multibranch-Projekte hinweg, ohne jeden Branch zu konfigurieren.
 - **Identity-Filter**: Erkennt automatisch, welche Builds/PRs dich betreffen (Trigger-User, Commit-Author oder Reviewer-Rolle).
 - **Notification-Cooldown**: 4h-Cooldown pro Event verhindert Spam bei flapping Status (NEEDS_WORK → UNAPPROVED → NEEDS_WORK).
-- **TUI Dashboard**: Terminal-UI mit Auto-Refresh, Tastatur-Navigation und „im Browser öffnen".
+- **TUI Dashboard**: Terminal-UI mit Auto-Refresh, Tastatur-Navigation, Build-Trend-Sparkline (`✓✓✗✓✗`) und „im Browser öffnen".
 - **AI-Analyse on demand**: Optional — `a` im Dashboard analysiert einen Build-Fail oder fasst einen PR-Diff via LLM zusammen.
 - **Batterie-schonend**: Passt das Abfrage-Intervall auf dem MacBook automatisch an, wenn du nicht am Strom hängst.
 - **Enterprise-Ready**: Unterstützt Proxies und Custom CAs (`HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`).
@@ -28,8 +28,12 @@ cp .env.example .env # Tokens eintragen
 
 ## Benutzung
 
-- `flare watch`: Startet den Hintergrund-Prozess (am besten via LaunchAgent automatisieren).
+- `flare watch`: Startet den Hintergrund-Prozess.
 - `flare status`: Öffnet das interaktive Dashboard im Terminal.
+- `flare install-agent` (macOS): registriert einen LaunchAgent, der `flare watch` automatisch beim Login startet und im Hintergrund am Leben hält. Logs landen in `~/Library/Logs/flare/watcher.{out,err}.log`.
+- `flare uninstall-agent` (macOS): unloaded den LaunchAgent und entfernt die plist wieder.
+
+> Beim LaunchAgent-Mode liest flare zusätzlich `~/.config/flare/.env`, da LaunchAgents keine Shell-Profile sehen. Lege deine Tokens (`JENKINS_TOKEN`, `BITBUCKET_PAT`, ggf. `GEMINI_API_KEY`) dort ab.
 
 ### Dashboard-Shortcuts
 

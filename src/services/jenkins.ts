@@ -8,11 +8,14 @@ import {
 } from './jenkins.schema.js';
 import { log } from '../log.js';
 
+export type BuildResult = 'SUCCESS' | 'FAILURE' | 'UNSTABLE' | 'ABORTED' | 'RUNNING';
+
 export interface JenkinsStatus {
   job: string;
   number: number;
-  result: 'SUCCESS' | 'FAILURE' | 'UNSTABLE' | 'ABORTED' | 'RUNNING';
+  result: BuildResult;
   url: string;
+  recent: BuildResult[];
 }
 
 export interface Identity {
@@ -49,6 +52,7 @@ export function isMyBuild(build: JenkinsBuild, identity: Identity): boolean {
 export interface BranchBuild {
   branch: string;
   build: JenkinsBuild;
+  recent: BuildResult[];
 }
 
 export function selectBuilds(
@@ -59,15 +63,19 @@ export function selectBuilds(
   const pickFrom = (builds: JenkinsBuild[]): JenkinsBuild | undefined =>
     myBuildsOnly ? builds.find((b) => isMyBuild(b, identity)) : builds[0];
 
+  const recentFrom = (builds: JenkinsBuild[]): BuildResult[] =>
+    builds.slice(0, 5).map((b) => (b.result ?? 'RUNNING') as BuildResult);
+
   if (response.builds && response.builds.length > 0) {
     const match = pickFrom(response.builds);
-    return match ? [{ branch: '', build: match }] : [];
+    return match ? [{ branch: '', build: match, recent: recentFrom(response.builds) }] : [];
   }
 
   const result: BranchBuild[] = [];
   for (const branch of response.jobs ?? []) {
-    const match = pickFrom(branch.builds ?? []);
-    if (match) result.push({ branch: branch.name, build: match });
+    const builds = branch.builds ?? [];
+    const match = pickFrom(builds);
+    if (match) result.push({ branch: branch.name, build: match, recent: recentFrom(builds) });
   }
   return result;
 }
@@ -91,12 +99,13 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
       const parsed = JenkinsJobResponseSchema.parse(data);
 
       const matches = selectBuilds(parsed, config.identity, jobConfig.my_builds_only);
-      for (const { branch, build } of matches) {
+      for (const { branch, build, recent } of matches) {
         statuses.push({
           job: branch ? `${jobConfig.path}/${branch}` : jobConfig.path,
           number: build.number,
-          result: build.result || 'RUNNING',
+          result: (build.result ?? 'RUNNING') as BuildResult,
           url: build.url,
+          recent,
         });
       }
     } catch (err) {

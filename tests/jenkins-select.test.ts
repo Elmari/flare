@@ -28,6 +28,7 @@ test('selectBuilds: leaf job with my build returns one entry without branch', ()
   assert.equal(result.length, 1);
   assert.equal(result[0].branch, '');
   assert.equal(result[0].build.number, 5);
+  assert.deepEqual(result[0].recent, ['SUCCESS', 'SUCCESS']);
 });
 
 test('selectBuilds: leaf job with my_builds_only and only foreign builds returns empty', () => {
@@ -116,6 +117,51 @@ test('selectBuilds: multibranch branch with no builds is skipped', () => {
 
 test('selectBuilds: response with neither builds nor jobs returns empty', () => {
   assert.deepEqual(selectBuilds({}, me, true), []);
+});
+
+test('selectBuilds: recent contains the last 5 build results in API order (newest first)', () => {
+  const response: JenkinsJobResponse = {
+    builds: [
+      build(10, { result: 'FAILURE' }),
+      build(9, { result: 'SUCCESS' }),
+      build(8, { result: 'FAILURE' }),
+      build(7, { result: 'SUCCESS' }),
+      build(6, { result: 'SUCCESS' }),
+      build(5, { result: 'SUCCESS' }), // outside the slice
+    ],
+  };
+  const result = selectBuilds(response, me, false);
+  assert.equal(result.length, 1);
+  assert.deepEqual(result[0].recent, ['FAILURE', 'SUCCESS', 'FAILURE', 'SUCCESS', 'SUCCESS']);
+});
+
+test('selectBuilds: maps null result to RUNNING in the recent trend', () => {
+  const response: JenkinsJobResponse = {
+    builds: [build(10, { result: null }), build(9, { result: 'SUCCESS' })],
+  };
+  const result = selectBuilds(response, me, false);
+  assert.deepEqual(result[0].recent, ['RUNNING', 'SUCCESS']);
+});
+
+test('selectBuilds: each multibranch entry carries its own branch trend', () => {
+  const response: JenkinsJobResponse = {
+    jobs: [
+      {
+        name: 'main',
+        url: 'https://jenkins.example.com/job/x/job/main/',
+        builds: [myBuild(5), build(4, { result: 'FAILURE' })],
+      },
+      {
+        name: 'feature-y',
+        url: 'https://jenkins.example.com/job/x/job/feature-y/',
+        builds: [myBuild(2), myBuild(1)],
+      },
+    ],
+  };
+  const result = selectBuilds(response, me, true);
+  assert.equal(result.length, 2);
+  assert.deepEqual(result[0].recent, ['SUCCESS', 'FAILURE']);
+  assert.deepEqual(result[1].recent, ['SUCCESS', 'SUCCESS']);
 });
 
 test('selectBuilds: leaf takes precedence when both builds and jobs are present', () => {

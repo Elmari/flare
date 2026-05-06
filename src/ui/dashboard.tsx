@@ -309,10 +309,14 @@ const Dashboard: React.FC<Props> = ({ config }) => {
           {jenkins.length === 0 && <Text dimColor>No builds found.</Text>}
           {jenkins.map((s, i) => {
             const isSelected = panel === 'jenkins' && i === jenkinsIdx;
+            const trend = s.recent.slice(0, 5).reverse();
             return (
               <Box key={s.job}>
                 <Text color={isSelected ? 'magenta' : undefined}>{isSelected ? '▸ ' : '  '}</Text>
-                <Text color={buildResultColor(s.result)}>{buildResultGlyph(s.result)} </Text>
+                {trend.map((r, idx) => (
+                  <Text key={idx} color={buildResultColor(r)}>{buildResultGlyph(r)}</Text>
+                ))}
+                <Text> </Text>
                 <Box flexGrow={1}>
                   <Text wrap="truncate-end">{s.job}</Text>
                 </Box>
