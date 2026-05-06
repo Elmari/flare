@@ -1,7 +1,11 @@
 import { basic, request } from '../http.js';
 import { readEnvSecret } from '../config.js';
 import type { Config } from '../config.js';
-import { JenkinsJobResponseSchema, type JenkinsBuild } from './jenkins.schema.js';
+import {
+  JenkinsJobResponseSchema,
+  type JenkinsBuild,
+  type JenkinsJobResponse,
+} from './jenkins.schema.js';
 import { log } from '../log.js';
 
 export interface JenkinsStatus {
@@ -42,6 +46,36 @@ export function isMyBuild(build: JenkinsBuild, identity: Identity): boolean {
   return false;
 }
 
+export interface BranchBuild {
+  branch: string;
+  build: JenkinsBuild;
+}
+
+export function selectBuilds(
+  response: JenkinsJobResponse,
+  identity: Identity,
+  myBuildsOnly: boolean,
+): BranchBuild[] {
+  const pickFrom = (builds: JenkinsBuild[]): JenkinsBuild | undefined =>
+    myBuildsOnly ? builds.find((b) => isMyBuild(b, identity)) : builds[0];
+
+  if (response.builds && response.builds.length > 0) {
+    const match = pickFrom(response.builds);
+    return match ? [{ branch: '', build: match }] : [];
+  }
+
+  const result: BranchBuild[] = [];
+  for (const branch of response.jobs ?? []) {
+    const match = pickFrom(branch.builds ?? []);
+    if (match) result.push({ branch: branch.name, build: match });
+  }
+  return result;
+}
+
+const BUILD_FIELDS =
+  'number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],changeSet[items[authorEmail]]';
+const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,5},jobs[name,url,builds[${BUILD_FIELDS}]{0,5}]{0,50}`;
+
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
   const cfg = config.sources.jenkins;
   if (!cfg || !cfg.enabled) return [];
@@ -53,25 +87,16 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
   for (const jobConfig of cfg.jobs) {
     try {
       const jobUrl = jobApiUrl(cfg.base_url, jobConfig.path);
-      const data = await request<unknown>(jobUrl, {
-        headers,
-        query: {
-          tree: 'builds[number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],changeSet[items[authorEmail]]]{0,5}',
-        },
-      });
+      const data = await request<unknown>(jobUrl, { headers, query: { tree: TREE_QUERY } });
+      const parsed = JenkinsJobResponseSchema.parse(data);
 
-      const { builds } = JenkinsJobResponseSchema.parse(data);
-
-      const latestBuild: JenkinsBuild | undefined = jobConfig.my_builds_only
-        ? builds.find((b) => isMyBuild(b, config.identity))
-        : builds[0];
-
-      if (latestBuild) {
+      const matches = selectBuilds(parsed, config.identity, jobConfig.my_builds_only);
+      for (const { branch, build } of matches) {
         statuses.push({
-          job: jobConfig.path,
-          number: latestBuild.number,
-          result: latestBuild.result || 'RUNNING',
-          url: latestBuild.url,
+          job: branch ? `${jobConfig.path}/${branch}` : jobConfig.path,
+          number: build.number,
+          result: build.result || 'RUNNING',
+          url: build.url,
         });
       }
     } catch (err) {

@@ -19,8 +19,16 @@ export const JenkinsBuildSchema = z.object({
   }).optional(),
 });
 
+export const JenkinsBranchSchema = z.object({
+  name: z.string(),
+  url: z.string().url(),
+  builds: z.array(JenkinsBuildSchema).optional(),
+});
+
 export const JenkinsJobResponseSchema = z.object({
-  builds: z.array(JenkinsBuildSchema),
+  builds: z.array(JenkinsBuildSchema).optional(),
+  jobs: z.array(JenkinsBranchSchema).optional(),
 });
 
 export type JenkinsBuild = z.infer<typeof JenkinsBuildSchema>;
+export type JenkinsJobResponse = z.infer<typeof JenkinsJobResponseSchema>;
