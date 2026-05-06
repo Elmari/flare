@@ -22,8 +22,8 @@ export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStat
   const pat = readEnvSecret(cfg.pat_env);
   const headers = { ...bearer(pat), accept: 'application/json' };
   const prs: BitbucketPRStatus[] = [];
+  const ignored = new Set(cfg.ignored_authors.map((a) => a.toLowerCase()));
 
-  // We fetch as AUTHOR and REVIEWER to cover all relevant PRs
   const roles = ['AUTHOR', 'REVIEWER'] as const;
 
   for (const role of roles) {
@@ -36,7 +36,13 @@ export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStat
       const { values } = BitbucketDashboardResponseSchema.parse(data);
 
       for (const val of values) {
-        const myStatus = val.reviewers?.find((r) => 
+        if (val.state !== 'OPEN') continue;
+
+        const authorSlug = val.author.user.slug.toLowerCase();
+        const authorName = val.author.user.name.toLowerCase();
+        if (ignored.has(authorSlug) || ignored.has(authorName)) continue;
+
+        const myStatus = val.reviewers?.find((r) =>
           r.user.slug.toLowerCase() === config.identity.username.toLowerCase() ||
           r.user.name.toLowerCase() === config.identity.username.toLowerCase()
         )?.status;

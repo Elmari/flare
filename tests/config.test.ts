@@ -35,7 +35,22 @@ test('ConfigSchema accepts a full Jenkins + Bitbucket config', () => {
   assert.equal(parsed.sources.jenkins?.api_token_env, 'JENKINS_TOKEN');
   assert.equal(parsed.sources.jenkins?.jobs[0].my_builds_only, true);
   assert.equal(parsed.sources.bitbucket?.pat_env, 'BITBUCKET_PAT');
+  assert.deepEqual(parsed.sources.bitbucket?.ignored_authors, []);
   assert.equal(parsed.settings.poll_interval_seconds, 60);
+});
+
+test('ConfigSchema accepts a list of ignored Bitbucket authors', () => {
+  const parsed = ConfigSchema.parse({
+    identity: { username: 'alice' },
+    sources: {
+      bitbucket: {
+        base_url: 'https://bitbucket.firma.de',
+        ignored_authors: ['dependabot', 'release-bot'],
+      },
+    },
+    settings: {},
+  });
+  assert.deepEqual(parsed.sources.bitbucket?.ignored_authors, ['dependabot', 'release-bot']);
 });
 
 test('ConfigSchema rejects a non-URL Jenkins base_url', () => {

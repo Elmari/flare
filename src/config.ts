@@ -22,6 +22,7 @@ const BitbucketConfigSchema = z.object({
   base_url: z.string().url(),
   pat_env: z.string().default('BITBUCKET_PAT'),
   my_prs_only: z.boolean().default(true),
+  ignored_authors: z.array(z.string()).default([]),
 });
 
 // TODO: Future Proactive Agent: add LLM configuration for failure analysis
@@ -91,6 +92,7 @@ sources:
     base_url: https://bitbucket.firma.de
     pat_env: BITBUCKET_PAT
     my_prs_only: true
+    ignored_authors: []
 
 settings:
   poll_interval_seconds: 120
