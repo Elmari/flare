@@ -13,7 +13,8 @@ export function initHttp(): void {
     try {
       ca = readFileSync(caCerts);
     } catch (err) {
-      // ignore
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`warning: NODE_EXTRA_CA_CERTS=${caCerts} could not be read: ${msg}\n`);
     }
   }
 
@@ -43,18 +44,25 @@ export async function request<T = unknown>(url: string, opts: RequestOpts = {}):
 
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 30_000);
+  const method = opts.method ?? 'GET';
 
+  let res: Awaited<ReturnType<typeof undiciFetch>>;
   try {
-    const res = await undiciFetch(u.toString(), {
-      method: opts.method ?? 'GET',
+    res = await undiciFetch(u.toString(), {
+      method,
       headers: opts.headers,
       body: opts.body,
       signal: ctrl.signal,
     });
+  } catch (err) {
+    clearTimeout(timeout);
+    throw wrapFetchError(method, u, err);
+  }
 
+  try {
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new HttpError(res.status, `${opts.method ?? 'GET'} ${u.pathname} → ${res.status}: ${text.slice(0, 500)}`);
+      throw new HttpError(res.status, `${method} ${u.pathname} → ${res.status}: ${text.slice(0, 500)}`);
     }
 
     const ct = res.headers.get('content-type') ?? '';
@@ -65,6 +73,35 @@ export async function request<T = unknown>(url: string, opts: RequestOpts = {}):
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function wrapFetchError(method: string, u: URL, err: unknown): Error {
+  const e = err as { message?: string; cause?: unknown; name?: string };
+  const cause = e?.cause as { code?: string; message?: string; name?: string } | undefined;
+
+  const reason = cause?.code ?? cause?.name ?? cause?.message ?? e?.message ?? String(err);
+  const detail = cause?.message && cause.message !== reason ? ` — ${cause.message}` : '';
+  const hint = hintForCode(reason);
+
+  return new Error(
+    `${method} ${u.host}${u.pathname} failed: ${reason}${detail}${hint ? `\n  hint: ${hint}` : ''}`,
+  );
+}
+
+function hintForCode(reason: string): string | null {
+  const r = reason.toLowerCase();
+  if (r.includes('enotfound') || r.includes('eai_again')) {
+    return 'DNS-Lookup gescheitert — Hostname falsch, oder Corp-Proxy nötig (HTTPS_PROXY).';
+  }
+  if (r.includes('econnrefused')) return 'Verbindung abgelehnt — Service down oder falscher Port.';
+  if (r.includes('etimedout') || r.includes('connect_timeout')) {
+    return 'Timeout — Firewall, Proxy oder Service unerreichbar.';
+  }
+  if (r.includes('cert') || r.includes('self_signed') || r.includes('unable_to_verify')) {
+    return 'TLS-Cert-Validation fehlgeschlagen — setze NODE_EXTRA_CA_CERTS auf euer Corp-CA-Bundle.';
+  }
+  if (r.includes('aborted')) return 'Abgebrochen — Timeout zu kurz oder Endpoint hängt.';
+  return null;
 }
 
 export class HttpError extends Error {

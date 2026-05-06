@@ -6,6 +6,7 @@ import {
   buildAnalysisPrompt,
   buildPRPrompt,
   extractJson,
+  resolveCustomHeaders,
 } from '../src/llm.js';
 
 test('extractJson parses raw JSON content', () => {
@@ -83,4 +84,44 @@ test('buildPRPrompt embeds repo, PR id, title, and diff', () => {
   assert.match(out, /Pull Request: #128/);
   assert.match(out, /Fix retry logic/);
   assert.match(out, /\+\+\+ a\/foo\.ts/);
+});
+
+test('resolveCustomHeaders returns an empty object when no headers are configured', () => {
+  assert.deepEqual(resolveCustomHeaders(undefined), {});
+  assert.deepEqual(resolveCustomHeaders({}), {});
+});
+
+test('resolveCustomHeaders substitutes ${ENV_VAR} placeholders', () => {
+  process.env.FLARE_TEST_TOKEN = 'abc123';
+  try {
+    const out = resolveCustomHeaders({ 'x-api-key': '${FLARE_TEST_TOKEN}' });
+    assert.deepEqual(out, { 'x-api-key': 'abc123' });
+  } finally {
+    delete process.env.FLARE_TEST_TOKEN;
+  }
+});
+
+test('resolveCustomHeaders passes through static values unchanged', () => {
+  const out = resolveCustomHeaders({ 'x-tenant-id': 'team-x', accept: 'application/json' });
+  assert.deepEqual(out, { 'x-tenant-id': 'team-x', accept: 'application/json' });
+});
+
+test('resolveCustomHeaders throws with the header name when an env var is missing', () => {
+  delete process.env.FLARE_TEST_MISSING;
+  assert.throws(
+    () => resolveCustomHeaders({ 'x-api-key': '${FLARE_TEST_MISSING}' }),
+    /llm\.custom_headers\.x-api-key.*FLARE_TEST_MISSING/,
+  );
+});
+
+test('resolveCustomHeaders supports multiple substitutions in one value', () => {
+  process.env.FLARE_TEST_A = 'foo';
+  process.env.FLARE_TEST_B = 'bar';
+  try {
+    const out = resolveCustomHeaders({ 'x-combo': '${FLARE_TEST_A}-${FLARE_TEST_B}' });
+    assert.deepEqual(out, { 'x-combo': 'foo-bar' });
+  } finally {
+    delete process.env.FLARE_TEST_A;
+    delete process.env.FLARE_TEST_B;
+  }
 });

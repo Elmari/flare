@@ -99,22 +99,27 @@ Im Dashboard fasst `a` auf einem markierten Eintrag den Kontext via LLM zusammen
 - **Build-Failure** → Console-Log wird gefetched, an den LLM geschickt, Antwort als Summary + likely cause + (wenn ableitbar) Fix-Hint angezeigt.
 - **PR-Review** → Diff wird gefetched und als Summary + key files + review focus aufbereitet.
 
-Das Feature ist **standardmäßig aus**. Aktivieren über einen `llm:`-Block in `~/.config/flare/config.yaml`:
+Das Feature ist **standardmäßig aus**. flare ruft den **Gemini `generateContent`-Endpoint** direkt auf — also Vertex AI, das Corp-Gemini-Gateway oder Googles öffentliche Generative Language API. Auth läuft komplett über `custom_headers` mit `${ENV_VAR}`-Substitution zur Laufzeit (gleiches Muster wie [`rewind`](../rewind)).
 
 ```yaml
 llm:
-  endpoint: https://generativelanguage.googleapis.com/v1beta/openai
-  api_key_env: GEMINI_API_KEY
-  model: gemini-2.5-flash
-  # custom_headers:        # optional, für Corporate-Gateways
-  #   x-tenant: team-x
-  max_log_kb: 30           # Console-Log wird auf die letzten N KB beschränkt
-  max_diff_kb: 50          # PR-Diff wird auf die ersten N KB beschränkt
+  endpoint: https://corp-llm-proxy.firma.de/projects/PROJECT/locations/europe-west1/publishers/google/models/gemini-2.5-flash:generateContent
+  custom_headers:
+    x-api-key: '${GEMINI_API_KEY}'
+    # x-tenant-id: team-x          # weitere Header je nach Gateway
+  max_log_kb: 30                    # Console-Log wird auf die letzten N KB beschränkt
+  max_diff_kb: 50                   # PR-Diff wird auf die ersten N KB beschränkt
 ```
 
-Erwartet wird ein **OpenAI-kompatibler `POST /v1/chat/completions`**-Endpoint. Funktioniert mit Gemini (OpenAI-Mode), OpenAI selbst, OpenRouter, Anthropic-Proxies, Corporate-Gateways oder Ollama. Auth läuft über den `api_key_env`-Env-Var (Bearer-Token), zusätzliche Header lassen sich frei ergänzen.
+Wichtige Punkte:
 
-**Datenschutz-Hinweis**: Bei jedem Druck auf `a` wird der **vollständige (truncated) Build-Log** bzw. **PR-Diff** an deinen konfigurierten Endpoint geschickt. Verwende kein öffentliches LLM für Repos mit sensitiven Inhalten — ein internes Gateway oder lokales Ollama ist die sichere Variante. Der Watcher selbst (`flare watch`) macht **keine** LLM-Calls.
+- **Kein Bearer-Header**: flare schickt keinen `Authorization: Bearer …`, weil das Corp-Gateway `x-api-key` (oder einen anderen Custom-Header) erwartet. Setze die Auth komplett über `custom_headers`.
+- **Modell steckt im URL**: `…/models/gemini-2.5-flash:generateContent` — kein separates `model:`-Feld nötig.
+- **Env-Var-Substitution**: Werte mit `${VAR}` werden zur Laufzeit aus `process.env` aufgelöst. Fehlende Variable → klarer Fehler beim Start des `a`-Calls.
+- **Proxy & CA**: `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` werden automatisch geehrt; `NODE_EXTRA_CA_CERTS` (Pfad zur PEM-Datei) für Corp-Custom-CAs.
+- **JSON-Output**: flare setzt `generationConfig.responseMimeType: application/json`, parsed mit Zod, fällt bei kaputtem JSON auf Raw-Text-Anzeige zurück.
+
+**Datenschutz-Hinweis**: Bei jedem Druck auf `a` wird der **vollständige (truncated) Build-Log** bzw. **PR-Diff** an den konfigurierten Endpoint geschickt. Verwende kein öffentliches LLM für Repos mit sensitiven Inhalten — ein internes Gateway oder lokales Ollama ist die sichere Variante. Der Watcher selbst (`flare watch`) macht **keine** LLM-Calls.
 
 Analyse-Ergebnisse werden für die Dauer der TUI-Session in-memory gecached; mehrfaches `a` auf denselben Build/PR verbrennt keine Tokens. Bei TUI-Restart wird neu analysiert.
 

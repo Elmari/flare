@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { bearer, request } from './http.js';
-import { readEnvSecret, type Config } from './config.js';
+import { request } from './http.js';
+import type { Config } from './config.js';
 import { fetchBuildLog, type JenkinsStatus } from './services/jenkins.js';
 import { fetchPRDiff, type BitbucketPRStatus } from './services/bitbucket.js';
 
@@ -22,49 +22,76 @@ export type AnalysisResult<T> =
   | { ok: true; response: T }
   | { ok: false; raw: string; error: string };
 
-const ChatResponseSchema = z.object({
-  choices: z.array(
-    z.object({
-      message: z.object({
-        content: z.string(),
-      }),
-    }),
-  ).min(1),
-});
+const ENV_VAR_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
 
-interface LlmCallArgs {
+export function resolveCustomHeaders(custom?: Record<string, string>): Record<string, string> {
+  if (!custom) return {};
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(custom)) {
+    out[name] = value.replace(ENV_VAR_RE, (_match, varName: string) => {
+      const v = process.env[varName];
+      if (v === undefined || v === '') {
+        throw new Error(`llm.custom_headers.${name}: env var ${varName} is not set`);
+      }
+      return v;
+    });
+  }
+  return out;
+}
+
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    finishReason?: string;
+  }>;
+  promptFeedback?: { blockReason?: string };
+}
+
+interface GeminiCallArgs {
   config: Config;
-  systemPrompt: string;
+  systemInstruction: string;
   userPrompt: string;
 }
 
-async function chatComplete({ config, systemPrompt, userPrompt }: LlmCallArgs): Promise<string> {
+async function callGemini({ config, systemInstruction, userPrompt }: GeminiCallArgs): Promise<string> {
   const llm = config.llm;
   if (!llm) throw new Error('LLM is not configured (missing `llm` block in config.yaml).');
 
-  const apiKey = readEnvSecret(llm.api_key_env);
-  const url = `${llm.endpoint.replace(/\/$/, '')}/chat/completions`;
+  const body = JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+    },
+  });
 
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     accept: 'application/json',
-    ...bearer(apiKey),
-    ...(llm.custom_headers ?? {}),
+    ...resolveCustomHeaders(llm.custom_headers),
   };
 
-  const body = JSON.stringify({
-    model: llm.model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.2,
+  const res = await request<GeminiResponse>(llm.endpoint, {
+    method: 'POST',
+    headers,
+    body,
+    timeoutMs: 60_000,
   });
 
-  const data = await request<unknown>(url, { method: 'POST', headers, body, timeoutMs: 60_000 });
-  const parsed = ChatResponseSchema.parse(data);
-  return parsed.choices[0].message.content;
+  if (res.promptFeedback?.blockReason) {
+    throw new Error(`Gemini blocked the prompt: ${res.promptFeedback.blockReason}`);
+  }
+
+  const candidate = res.candidates?.[0];
+  const text = candidate?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+
+  if (!text.trim()) {
+    const reason = candidate?.finishReason ? ` (finishReason: ${candidate.finishReason})` : '';
+    throw new Error(`Gemini returned an empty response${reason}`);
+  }
+
+  return text;
 }
 
 export function extractJson(content: string): unknown {
@@ -118,12 +145,11 @@ export async function analyzeBuildFailure(
 ): Promise<AnalysisResult<AnalysisResponse>> {
   const maxBytes = (config.llm?.max_log_kb ?? 30) * 1024;
   const log = await fetchBuildLog(config, build.url, maxBytes);
-  const truncated = log.truncated;
-  const userPrompt = buildAnalysisPrompt(build.job, build.number, log.text, truncated);
+  const userPrompt = buildAnalysisPrompt(build.job, build.number, log.text, log.truncated);
 
-  const raw = await chatComplete({
+  const raw = await callGemini({
     config,
-    systemPrompt: BUILD_SYSTEM_PROMPT,
+    systemInstruction: BUILD_SYSTEM_PROMPT,
     userPrompt,
   });
 
@@ -144,9 +170,9 @@ export async function summarizePR(
   const diff = await fetchPRDiff(config, pr.repo, pr.id, maxBytes);
   const userPrompt = buildPRPrompt(pr.repo, pr.id, pr.title, diff.text, diff.truncated);
 
-  const raw = await chatComplete({
+  const raw = await callGemini({
     config,
-    systemPrompt: PR_SYSTEM_PROMPT,
+    systemInstruction: PR_SYSTEM_PROMPT,
     userPrompt,
   });
 

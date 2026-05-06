@@ -87,38 +87,39 @@ test('ConfigSchema rejects missing identity.username', () => {
 
 test('LlmConfigSchema applies sensible defaults when only the endpoint is given', () => {
   const parsed = LlmConfigSchema.parse({
-    endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    endpoint:
+      'https://corp-llm-proxy.firma.de/projects/PROJECT/locations/europe-west1/publishers/google/models/gemini-2.5-flash:generateContent',
   });
-  assert.equal(parsed.api_key_env, 'GEMINI_API_KEY');
-  assert.equal(parsed.model, 'gemini-2.5-flash');
   assert.equal(parsed.max_log_kb, 30);
   assert.equal(parsed.max_diff_kb, 50);
+  assert.equal(parsed.custom_headers, undefined);
 });
 
 test('LlmConfigSchema rejects a missing endpoint', () => {
-  assert.throws(() => LlmConfigSchema.parse({ api_key_env: 'X' }));
+  assert.throws(() => LlmConfigSchema.parse({}));
 });
 
 test('LlmConfigSchema accepts custom headers and overridden limits', () => {
   const parsed = LlmConfigSchema.parse({
-    endpoint: 'https://gateway.firma.de/llm',
-    api_key_env: 'CORP_LLM_KEY',
-    model: 'claude-sonnet-4-6',
-    custom_headers: { 'x-tenant': 'team-x' },
+    endpoint: 'https://gateway.firma.de/v1/models/gemini:generateContent',
+    custom_headers: { 'x-api-key': '${GEMINI_API_KEY}', 'x-tenant-id': 'team-x' },
     max_log_kb: 100,
     max_diff_kb: 200,
   });
-  assert.equal(parsed.model, 'claude-sonnet-4-6');
-  assert.deepEqual(parsed.custom_headers, { 'x-tenant': 'team-x' });
+  assert.deepEqual(parsed.custom_headers, {
+    'x-api-key': '${GEMINI_API_KEY}',
+    'x-tenant-id': 'team-x',
+  });
   assert.equal(parsed.max_log_kb, 100);
+  assert.equal(parsed.max_diff_kb, 200);
 });
 
 test('ConfigSchema accepts an optional llm block', () => {
   const parsed = ConfigSchema.parse({
     identity: { username: 'alice' },
     sources: {},
-    llm: { endpoint: 'https://example.com/v1' },
+    llm: { endpoint: 'https://example.com/v1/models/gemini:generateContent' },
     settings: {},
   });
-  assert.equal(parsed.llm?.endpoint, 'https://example.com/v1');
+  assert.equal(parsed.llm?.endpoint, 'https://example.com/v1/models/gemini:generateContent');
 });

@@ -27,8 +27,6 @@ const BitbucketConfigSchema = z.object({
 
 export const LlmConfigSchema = z.object({
   endpoint: z.string().url(),
-  api_key_env: z.string().default('GEMINI_API_KEY'),
-  model: z.string().default('gemini-2.5-flash'),
   custom_headers: z.record(z.string()).optional(),
   max_log_kb: z.number().int().min(1).max(200).default(30),
   max_diff_kb: z.number().int().min(1).max(500).default(50),
@@ -113,14 +111,16 @@ settings:
   notify_on_review_requested: true
 
 # Optional: enable on-demand AI analysis ('a' in the dashboard).
-# Works with any OpenAI-compatible chat completions endpoint
-# (Gemini OpenAI mode, OpenRouter, Anthropic proxies, OpenAI, Ollama, ...).
-# Heads up: the build log / PR diff is sent to this endpoint — only
-# enable it for endpoints you trust with that data.
+# Calls a Gemini generateContent endpoint (Vertex AI, the corporate
+# Gemini gateway, or Google's public Generative Language API).
+# Auth runs entirely through custom headers, with \${ENV_VAR}
+# substitution at request time. Heads up: the build log / PR diff is
+# sent to this endpoint — only enable it for endpoints you trust.
 # llm:
-#   endpoint: https://generativelanguage.googleapis.com/v1beta/openai
-#   api_key_env: GEMINI_API_KEY
-#   model: gemini-2.5-flash
+#   endpoint: https://corp-llm-proxy.firma.de/projects/PROJECT/locations/europe-west1/publishers/google/models/gemini-2.5-flash:generateContent
+#   custom_headers:
+#     x-api-key: '\${GEMINI_API_KEY}'
+#     # x-tenant-id: team-x          # add whatever the gateway requires
 #   max_log_kb: 30
 #   max_diff_kb: 50
 `;
