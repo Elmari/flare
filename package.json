@@ -1,0 +1,46 @@
+{
+  "name": "flare",
+  "version": "0.1.0",
+  "description": "Proactive developer dashboard and notification system for PRs and Jenkins builds.",
+  "type": "module",
+  "bin": {
+    "flare": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "watch": "tsx src/watcher-entry.ts",
+    "start": "node dist/index.js",
+    "test": "node --test --import tsx tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "conf": "^13.0.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.5",
+    "ink": "^5.1.0",
+    "js-yaml": "^4.1.0",
+    "node-notifier": "^10.0.1",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "react": "^19.0.0",
+    "undici": "^6.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.9.0",
+    "@types/node-notifier": "^8.0.5",
+    "@types/react": "^19.0.0",
+    "husky": "^9.1.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
