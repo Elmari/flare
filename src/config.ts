@@ -37,6 +37,7 @@ export const ConfigSchema = z.object({
   settings: z.object({
     poll_interval_seconds: z.number().int().min(30).default(120),
     battery_poll_interval_seconds: z.number().int().min(60).default(600),
+    dashboard_refresh_seconds: z.number().int().min(5).default(30),
   }),
 });
 
@@ -94,4 +95,5 @@ sources:
 settings:
   poll_interval_seconds: 120
   battery_poll_interval_seconds: 600
+  dashboard_refresh_seconds: 30
 `;
