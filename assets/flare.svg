@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#1f2a44"/>
+      <stop offset="100%" stop-color="#0b1220"/>
+    </radialGradient>
+    <linearGradient id="handle" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2a1810"/>
+      <stop offset="50%" stop-color="#5a3a25"/>
+      <stop offset="100%" stop-color="#2a1810"/>
+    </linearGradient>
+    <linearGradient id="cup" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7a5a18"/>
+      <stop offset="50%" stop-color="#d4a017"/>
+      <stop offset="100%" stop-color="#7a5a18"/>
+    </linearGradient>
+    <radialGradient id="flameOuter" cx="50%" cy="80%" r="65%">
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="60%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </radialGradient>
+    <radialGradient id="flameMid" cx="50%" cy="80%" r="60%">
+      <stop offset="0%" stop-color="#fef3c7"/>
+      <stop offset="60%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </radialGradient>
+    <radialGradient id="flameInner" cx="50%" cy="75%" r="60%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#fef9c3"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+
+  <circle cx="128" cy="76" r="72" fill="url(#glow)"/>
+
+  <g transform="translate(128 138)">
+    <path d="M -14 -2 L 14 -2 L 10 70 L -10 70 Z" fill="url(#handle)"/>
+    <line x1="-12" y1="14" x2="12" y2="14" stroke="#1a0f08" stroke-width="2"/>
+    <line x1="-11" y1="32" x2="11" y2="32" stroke="#1a0f08" stroke-width="2"/>
+    <line x1="-10" y1="50" x2="10" y2="50" stroke="#1a0f08" stroke-width="2"/>
+
+    <path d="M -16 -2 L -24 -26 L 24 -26 L 16 -2 Z" fill="url(#cup)"/>
+    <rect x="-26" y="-30" width="52" height="6" rx="2" fill="#a07810"/>
+    <rect x="-26" y="-31" width="52" height="2" rx="1" fill="#ffe082" opacity="0.7"/>
+
+    <path d="M 0 -90 Q 26 -65 18 -36 Q 0 -28 -18 -36 Q -26 -65 0 -90 Z" fill="url(#flameOuter)"/>
+    <path d="M 0 -82 Q 16 -62 12 -42 Q 0 -36 -12 -42 Q -16 -62 0 -82 Z" fill="url(#flameMid)"/>
+    <path d="M 0 -74 Q 9 -60 6 -48 Q 0 -44 -6 -48 Q -9 -60 0 -74 Z" fill="url(#flameInner)"/>
+  </g>
+
+  <circle cx="200" cy="56" r="18" fill="#ef4444" stroke="#0b1220" stroke-width="4"/>
+</svg>
