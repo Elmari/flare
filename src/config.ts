@@ -39,6 +39,8 @@ export const ConfigSchema = z.object({
     poll_interval_seconds: z.number().int().min(30).default(120),
     battery_poll_interval_seconds: z.number().int().min(60).default(600),
     dashboard_refresh_seconds: z.number().int().min(5).default(30),
+    notify_on_build_success: z.boolean().default(false),
+    notify_on_review_requested: z.boolean().default(true),
   }),
 });
 
@@ -98,4 +100,6 @@ settings:
   poll_interval_seconds: 120
   battery_poll_interval_seconds: 600
   dashboard_refresh_seconds: 30
+  notify_on_build_success: false
+  notify_on_review_requested: true
 `;

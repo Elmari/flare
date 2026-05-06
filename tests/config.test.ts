@@ -14,6 +14,8 @@ test('ConfigSchema accepts a minimal valid config and applies defaults', () => {
   assert.equal(parsed.settings.poll_interval_seconds, 120);
   assert.equal(parsed.settings.battery_poll_interval_seconds, 600);
   assert.equal(parsed.settings.dashboard_refresh_seconds, 30);
+  assert.equal(parsed.settings.notify_on_build_success, false);
+  assert.equal(parsed.settings.notify_on_review_requested, true);
 });
 
 test('ConfigSchema accepts a full Jenkins + Bitbucket config', () => {

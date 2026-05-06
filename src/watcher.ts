@@ -97,11 +97,20 @@ async function pollJenkins(
         notify('Build Failed 🚨', `${s.job} #${s.number} failed.`);
         markNotified(key, notified, now);
       }
-    } else if (s.result === 'SUCCESS' && prev.result === 'FAILURE') {
-      const key = `build:${s.job}:${s.number}:FIXED`;
-      if (shouldNotify(key, notified, now)) {
-        notify('Build Fixed ✅', `${s.job} #${s.number} is back to green.`);
-        markNotified(key, notified, now);
+    } else if (s.result === 'SUCCESS') {
+      const isFixed = prev.result === 'FAILURE';
+      if (isFixed) {
+        const key = `build:${s.job}:${s.number}:FIXED`;
+        if (shouldNotify(key, notified, now)) {
+          notify('Build Fixed ✅', `${s.job} #${s.number} is back to green.`);
+          markNotified(key, notified, now);
+        }
+      } else if (config.settings.notify_on_build_success) {
+        const key = `build:${s.job}:${s.number}:SUCCESS`;
+        if (shouldNotify(key, notified, now)) {
+          notify('Build Passed ✅', `${s.job} #${s.number} succeeded.`);
+          markNotified(key, notified, now);
+        }
       }
     }
   }
@@ -117,12 +126,22 @@ async function pollBitbucket(
   const prs = await fetchBitbucketPRs(config);
   const prevState = readState<BitbucketState>('bitbucket');
   const nextState: BitbucketState = {};
+  const initialized = store.get('bitbucket_initialized') === true;
 
   for (const pr of prs) {
     nextState[pr.id] = { updatedDate: pr.updatedDate, approvalStatus: pr.approvalStatus };
     const prev = prevState[pr.id];
 
-    if (!prev) continue;
+    if (!prev) {
+      if (initialized && !pr.iAmAuthor && config.settings.notify_on_review_requested) {
+        const key = `pr:${pr.id}:REVIEW_REQUESTED`;
+        if (shouldNotify(key, notified, now)) {
+          notify('Review Requested 👀', `PR #${pr.id} in ${pr.repo}: ${pr.title}`);
+          markNotified(key, notified, now);
+        }
+      }
+      continue;
+    }
     if (pr.approvalStatus === prev.approvalStatus) continue;
 
     if (pr.approvalStatus === 'NEEDS_WORK') {
@@ -141,4 +160,5 @@ async function pollBitbucket(
   }
 
   store.set('bitbucket', nextState);
+  store.set('bitbucket_initialized', true);
 }

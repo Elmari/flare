@@ -12,6 +12,7 @@ export interface BitbucketPRStatus {
   updatedDate: number;
   url: string;
   author: string;
+  iAmAuthor: boolean;
   approvalStatus: 'APPROVED' | 'NEEDS_WORK' | 'UNAPPROVED';
 }
 
@@ -55,6 +56,7 @@ export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStat
           updatedDate: val.updatedDate,
           url: val.links?.self?.[0]?.href || '',
           author: val.author.user.displayName || val.author.user.name,
+          iAmAuthor: authorSlug === config.identity.username.toLowerCase(),
           approvalStatus: myStatus || 'UNAPPROVED',
         });
       }
