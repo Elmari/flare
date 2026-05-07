@@ -98,7 +98,7 @@ settings:
 
 Ein 4h-Cooldown pro `(Event, ID)` verhindert Wiederholungs-Notifications bei flapping Status.
 
-> **macOS-Hinweis zur Anzeigedauer**: `notification_timeout_seconds` wird vom Notification-Center nur respektiert, wenn die App auf **Banner** steht (auto-hide). Steht sie auf **Alert** (bleibt bis manuell weggeklickt), ignoriert macOS den Wert. Umstellen unter *System Settings → Notifications → Terminal/iTerm/Node*.
+> **macOS-Hinweis zur Anzeigedauer**: `notification_timeout_seconds` ist auf macOS praktisch wirkungslos — Banner-Style Notifications werden vom System nach ~5s ausgeblendet, Alert-Style bleiben bis du sie wegklickst (in beiden Fällen ignoriert macOS den Wert). Wenn dir Notifications zu schnell verschwinden: Stil auf **Hinweise (Alert)** umstellen unter *System Settings → Notifications → Terminal / iTerm / Node*. Auf **Windows/Linux** wird der Wert als echte Display-Zeit interpretiert.
 
 ## AI-Analyse (optional)
 
