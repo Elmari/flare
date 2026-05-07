@@ -6,6 +6,9 @@ export const log = pino({
     target: 'pino-pretty',
     options: {
       colorize: true,
+      // Send logs to stderr (fd 2) so they don't collide with Ink's TUI
+      // rendering on stdout when running `flare status`.
+      destination: 2,
     },
   },
 });
