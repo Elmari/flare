@@ -164,6 +164,20 @@ test('selectBuilds: each multibranch entry carries its own branch trend', () => 
   assert.deepEqual(result[1].recent, ['SUCCESS', 'SUCCESS']);
 });
 
+test('selectBuilds: finds a my_build buried beyond the first 5 entries', () => {
+  // Regression: a multibranch with heavy foreign traffic can push my build
+  // past position 5. With the larger fetch window this still surfaces.
+  const builds = [
+    ...Array.from({ length: 10 }, (_, i) => otherBuild(100 - i)),
+    myBuild(89),
+    otherBuild(88),
+  ];
+  const response: JenkinsJobResponse = { builds };
+  const result = selectBuilds(response, me, true);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].build.number, 89);
+});
+
 test('selectBuilds: leaf takes precedence when both builds and jobs are present', () => {
   // Defensive: if Jenkins ever returns both fields populated (shouldn't, but),
   // treat as leaf since builds is the canonical leaf signal.

@@ -23,30 +23,70 @@ export interface Identity {
   emails: string[];
 }
 
-export function isMyBuild(build: JenkinsBuild, identity: Identity): boolean {
+export interface MyBuildDiagnosis {
+  match: boolean;
+  reason: string;
+  causes: string[];
+  commitAuthors: string[];
+}
+
+export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuildDiagnosis {
   const username = identity.username.toLowerCase();
   const emails = new Set(identity.emails.map((e) => e.toLowerCase()));
   const userTokens = new Set<string>([username, ...emails]);
 
   const causes = build.actions?.flatMap((a) => a.causes ?? []) ?? [];
+  const causeStrings = causes.map((c) =>
+    c.userId
+      ? `userId=${c.userId}`
+      : c.userName
+        ? `userName=${c.userName}`
+        : c.shortDescription
+          ? `desc=${c.shortDescription}`
+          : '<empty cause>',
+  );
+  const commitAuthors = (build.changeSet?.items ?? [])
+    .map((i) => i.authorEmail)
+    .filter((e): e is string => Boolean(e));
+
   for (const c of causes) {
-    if (c.userId && userTokens.has(c.userId.toLowerCase())) return true;
-    if (c.userName && userTokens.has(c.userName.toLowerCase())) return true;
+    if (c.userId && userTokens.has(c.userId.toLowerCase())) {
+      return { match: true, reason: `userId=${c.userId}`, causes: causeStrings, commitAuthors };
+    }
+    if (c.userName && userTokens.has(c.userName.toLowerCase())) {
+      return { match: true, reason: `userName=${c.userName}`, causes: causeStrings, commitAuthors };
+    }
     if (c.shortDescription) {
       const desc = c.shortDescription.toLowerCase();
       for (const email of emails) {
-        if (desc.includes(email)) return true;
+        if (desc.includes(email)) {
+          return {
+            match: true,
+            reason: `desc contains email '${email}'`,
+            causes: causeStrings,
+            commitAuthors,
+          };
+        }
       }
     }
   }
 
-  const items = build.changeSet?.items ?? [];
-  for (const item of items) {
-    const authorEmail = item.authorEmail?.toLowerCase();
-    if (authorEmail && emails.has(authorEmail)) return true;
+  for (const author of commitAuthors) {
+    if (emails.has(author.toLowerCase())) {
+      return {
+        match: true,
+        reason: `commit author=${author}`,
+        causes: causeStrings,
+        commitAuthors,
+      };
+    }
   }
 
-  return false;
+  return { match: false, reason: 'no identity signal', causes: causeStrings, commitAuthors };
+}
+
+export function isMyBuild(build: JenkinsBuild, identity: Identity): boolean {
+  return diagnoseMyBuild(build, identity).match;
 }
 
 export interface BranchBuild {
@@ -82,21 +122,41 @@ export function selectBuilds(
 
 const BUILD_FIELDS =
   'number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],changeSet[items[authorEmail]]';
-const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,5},jobs[name,url,builds[${BUILD_FIELDS}]{0,5}]{0,50}`;
+// Search window per branch/job: large enough that a "my" build buried under
+// foreign traffic still surfaces. The trend sparkline still slices to 5.
+const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,30},jobs[name,url,builds[${BUILD_FIELDS}]{0,30}]{0,50}`;
 
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
   const cfg = config.sources.jenkins;
-  if (!cfg || !cfg.enabled) return [];
+  if (!cfg) {
+    log.info('jenkins: sources.jenkins not configured — skipping');
+    return [];
+  }
+  if (!cfg.enabled) {
+    log.info('jenkins: sources.jenkins.enabled=false — skipping');
+    return [];
+  }
+  if (cfg.jobs.length === 0) {
+    log.info('jenkins: no jobs configured — skipping');
+    return [];
+  }
 
   const apiToken = readEnvSecret(cfg.api_token_env);
   const headers = { ...basic(cfg.username, apiToken), accept: 'application/json' };
   const statuses: JenkinsStatus[] = [];
+
+  log.info(
+    { baseUrl: cfg.base_url, jobCount: cfg.jobs.length },
+    `jenkins: starting fetch for ${cfg.jobs.length} job(s)`,
+  );
 
   for (const jobConfig of cfg.jobs) {
     try {
       const jobUrl = jobApiUrl(cfg.base_url, jobConfig.path);
       const data = await request<unknown>(jobUrl, { headers, query: { tree: TREE_QUERY } });
       const parsed = JenkinsJobResponseSchema.parse(data);
+
+      logSelection(jobConfig.path, jobConfig.my_builds_only, parsed, config.identity);
 
       const matches = selectBuilds(parsed, config.identity, jobConfig.my_builds_only);
       for (const { branch, build, recent } of matches) {
@@ -114,6 +174,58 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
   }
 
   return statuses;
+}
+
+function logSelection(
+  path: string,
+  myBuildsOnly: boolean,
+  parsed: JenkinsJobResponse,
+  identity: Identity,
+): void {
+  const summarize = (builds: JenkinsBuild[]) =>
+    builds.slice(0, 30).map((b) => {
+      const d = diagnoseMyBuild(b, identity);
+      return {
+        n: b.number,
+        result: b.result ?? 'RUNNING',
+        match: d.match,
+        reason: d.reason,
+        causes: d.causes,
+        commitAuthors: d.commitAuthors,
+      };
+    });
+
+  if (parsed.builds && parsed.builds.length > 0) {
+    log.info(
+      {
+        path,
+        shape: 'leaf',
+        myBuildsOnly,
+        identity: { username: identity.username, emails: identity.emails },
+        totalBuilds: parsed.builds.length,
+        builds: summarize(parsed.builds),
+      },
+      `jenkins: scanned ${path}`,
+    );
+    return;
+  }
+
+  const branches = parsed.jobs ?? [];
+  log.info(
+    {
+      path,
+      shape: 'multibranch',
+      myBuildsOnly,
+      identity: { username: identity.username, emails: identity.emails },
+      branchCount: branches.length,
+      branches: branches.map((b) => ({
+        name: b.name,
+        totalBuilds: b.builds?.length ?? 0,
+        builds: summarize(b.builds ?? []),
+      })),
+    },
+    `jenkins: scanned ${path}`,
+  );
 }
 
 function jobApiUrl(baseUrl: string, path: string): string {

@@ -3,7 +3,11 @@ import { log } from './log.js';
 import { loadConfig, type Config } from './config.js';
 import { isOnBattery } from './battery.js';
 import { notify, setNotificationTimeout } from './notifier.js';
-import { fetchLatestJenkinsStatus, type JenkinsStatus } from './services/jenkins.js';
+import {
+  fetchLatestJenkinsStatus,
+  type BuildResult,
+  type JenkinsStatus,
+} from './services/jenkins.js';
 import { fetchBitbucketPRs } from './services/bitbucket.js';
 import {
   shouldNotify,
@@ -16,9 +20,31 @@ const store = new Conf({ projectName: 'flare' });
 
 interface JenkinsBuildState {
   number: number;
-  result: JenkinsStatus['result'];
+  result: BuildResult;
+  // Last non-RUNNING result observed for this job, so a transient RUNNING poll
+  // between FAILURE and SUCCESS doesn't swallow the "Build Fixed" notification.
+  lastFinalResult?: BuildResult;
 }
 type JenkinsState = Record<string, JenkinsBuildState>;
+
+export type JenkinsTransition = 'failed' | 'fixed' | 'passed' | 'none';
+
+export function classifyJenkinsTransition(
+  prev: JenkinsBuildState | undefined,
+  current: { number: number; result: BuildResult },
+): JenkinsTransition {
+  if (!prev) return 'none';
+  const isNewBuild = current.number !== prev.number;
+  const resultChanged = current.result !== prev.result;
+  if (!isNewBuild && !resultChanged) return 'none';
+
+  if (current.result === 'FAILURE') return 'failed';
+  if (current.result === 'SUCCESS') {
+    const lastFinal = prev.lastFinalResult ?? prev.result;
+    return lastFinal === 'FAILURE' || lastFinal === 'UNSTABLE' ? 'fixed' : 'passed';
+  }
+  return 'none';
+}
 
 interface BitbucketPRState {
   updatedDate: number;
@@ -43,7 +69,7 @@ export async function startWatcher(): Promise<void> {
         ? config.settings.battery_poll_interval_seconds
         : config.settings.poll_interval_seconds;
 
-      log.debug(`Polling cycle started (Battery: ${battery}, Interval: ${interval}s)`);
+      log.info(`Polling cycle started [DIAG] (Battery: ${battery}, Interval: ${interval}s)`);
 
       await pollAll(config);
 
@@ -78,41 +104,41 @@ async function pollJenkins(
   notified: NotifiedState,
   now: number,
 ): Promise<void> {
+  log.info('[DIAG] pollJenkins entered');
   const latest = await fetchLatestJenkinsStatus(config);
+  log.info({ count: latest.length }, '[DIAG] pollJenkins got results');
   const prevState = readState<JenkinsState>('jenkins');
   const nextState: JenkinsState = {};
 
   for (const s of latest) {
-    nextState[s.job] = { number: s.number, result: s.result };
     const prev = prevState[s.job];
+    nextState[s.job] = {
+      number: s.number,
+      result: s.result,
+      lastFinalResult: s.result === 'RUNNING' ? prev?.lastFinalResult : s.result,
+    };
 
     // First time we see this job: bookkeep only, don't spam on watcher startup.
     if (!prev) continue;
 
-    const isNewBuild = s.number !== prev.number;
-    const resultChanged = s.result !== prev.result;
-    if (!isNewBuild && !resultChanged) continue;
-
-    if (s.result === 'FAILURE') {
+    const transition = classifyJenkinsTransition(prev, s);
+    if (transition === 'failed') {
       const key = `build:${s.job}:${s.number}:FAILURE`;
       if (shouldNotify(key, notified, now)) {
         notify('Build Failed 🚨', `${s.job} #${s.number} failed.`);
         markNotified(key, notified, now);
       }
-    } else if (s.result === 'SUCCESS') {
-      const isFixed = prev.result === 'FAILURE' || prev.result === 'UNSTABLE';
-      if (isFixed) {
-        const key = `build:${s.job}:${s.number}:FIXED`;
-        if (shouldNotify(key, notified, now)) {
-          notify('Build Fixed ✅', `${s.job} #${s.number} is back to green.`);
-          markNotified(key, notified, now);
-        }
-      } else if (config.settings.notify_on_build_success) {
-        const key = `build:${s.job}:${s.number}:SUCCESS`;
-        if (shouldNotify(key, notified, now)) {
-          notify('Build Passed ✅', `${s.job} #${s.number} succeeded.`);
-          markNotified(key, notified, now);
-        }
+    } else if (transition === 'fixed') {
+      const key = `build:${s.job}:${s.number}:FIXED`;
+      if (shouldNotify(key, notified, now)) {
+        notify('Build Fixed ✅', `${s.job} #${s.number} is back to green.`);
+        markNotified(key, notified, now);
+      }
+    } else if (transition === 'passed' && config.settings.notify_on_build_success) {
+      const key = `build:${s.job}:${s.number}:SUCCESS`;
+      if (shouldNotify(key, notified, now)) {
+        notify('Build Passed ✅', `${s.job} #${s.number} succeeded.`);
+        markNotified(key, notified, now);
       }
     }
   }
