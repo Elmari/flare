@@ -11,7 +11,7 @@ const JenkinsJobSchema = z.object({
 
 const JenkinsConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  base_url: z.string().url(),
+  base_url: z.url(),
   username: z.string(),
   api_token_env: z.string().default('JENKINS_TOKEN'),
   jobs: z.array(JenkinsJobSchema).default([]),
@@ -19,15 +19,15 @@ const JenkinsConfigSchema = z.object({
 
 const BitbucketConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  base_url: z.string().url(),
+  base_url: z.url(),
   pat_env: z.string().default('BITBUCKET_PAT'),
   my_prs_only: z.boolean().default(true),
   ignored_authors: z.array(z.string()).default([]),
 });
 
 export const LlmConfigSchema = z.object({
-  endpoint: z.string().url(),
-  custom_headers: z.record(z.string()).optional(),
+  endpoint: z.url(),
+  custom_headers: z.record(z.string(), z.string()).optional(),
   max_log_kb: z.number().int().min(1).max(200).default(30),
   max_diff_kb: z.number().int().min(1).max(500).default(50),
 });

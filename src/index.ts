@@ -4,8 +4,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
 
-loadDotenv();
-loadDotenv({ path: join(homedir(), '.config', 'flare', '.env') });
+loadDotenv({ quiet: true });
+loadDotenv({ path: join(homedir(), '.config', 'flare', '.env'), quiet: true });
 
 const program = new Command();
 program

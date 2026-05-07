@@ -1,32 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Agent, EnvHttpProxyAgent, fetch as undiciFetch, setGlobalDispatcher } from 'undici';
 
-suppressEnvProxyExperimentalWarning();
-
-function suppressEnvProxyExperimentalWarning(): void {
-  const matches = (message: string | undefined): boolean =>
-    !!message && /EnvHttpProxyAgent/i.test(message);
-
-  const origEmitWarning = process.emitWarning.bind(process);
-  process.emitWarning = function patchedEmitWarning(
-    warning: string | Error,
-    ...args: unknown[]
-  ): void {
-    const message = typeof warning === 'string' ? warning : warning?.message;
-    if (matches(message)) return;
-    return (origEmitWarning as (...a: unknown[]) => void)(warning, ...args);
-  } as typeof process.emitWarning;
-
-  const origEmit = process.emit.bind(process);
-  process.emit = function patchedEmit(name: string | symbol, ...args: unknown[]): boolean {
-    if (name === 'warning') {
-      const w = args[0];
-      if (w instanceof Error && matches(w.message)) return false;
-    }
-    return (origEmit as (n: string | symbol, ...a: unknown[]) => boolean)(name, ...args);
-  } as typeof process.emit;
-}
-
 let initialized = false;
 
 export function initHttp(): void {

@@ -9,7 +9,7 @@ const ChangeSetSchema = z.object({
 
 export const JenkinsBuildSchema = z.object({
   number: z.number(),
-  url: z.string().url(),
+  url: z.url(),
   result: z.enum(['SUCCESS', 'FAILURE', 'UNSTABLE', 'ABORTED']).nullable(),
   timestamp: z.number(),
   actions: z.array(z.object({
@@ -28,7 +28,7 @@ export const JenkinsBuildSchema = z.object({
 
 export const JenkinsBranchSchema = z.object({
   name: z.string(),
-  url: z.string().url(),
+  url: z.url(),
   builds: z.array(JenkinsBuildSchema).optional(),
 });
 
