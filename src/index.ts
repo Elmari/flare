@@ -32,12 +32,13 @@ program
 program
   .command('status')
   .description('Show current PR and Build status (TUI)')
-  .action(async () => {
+  .option('--no-fullscreen', 'render inline instead of taking over the terminal')
+  .action(async (opts: { fullscreen: boolean }) => {
     try {
       const { loadConfig } = await import('./config.js');
       const { runDashboard } = await import('./ui/dashboard.js');
       const config = loadConfig();
-      runDashboard(config);
+      runDashboard(config, { fullscreen: opts.fullscreen });
     } catch (err) {
       console.error((err as Error).message);
       process.exit(1);

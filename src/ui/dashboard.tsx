@@ -428,6 +428,28 @@ const RawAnalysisView: React.FC<{ raw: string; error: string }> = ({ raw, error 
   </Box>
 );
 
-export function runDashboard(config: Config) {
+const ENTER_ALT_SCREEN = '\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H';
+const LEAVE_ALT_SCREEN = '\x1b[?25h\x1b[?1049l';
+
+export interface RunDashboardOptions {
+  fullscreen?: boolean;
+}
+
+export function runDashboard(config: Config, opts: RunDashboardOptions = {}) {
+  const useFullscreen = opts.fullscreen !== false && process.stdout.isTTY;
+
+  if (useFullscreen) {
+    process.stdout.write(ENTER_ALT_SCREEN);
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      process.stdout.write(LEAVE_ALT_SCREEN);
+    };
+    process.once('exit', restore);
+    process.once('SIGINT', () => { restore(); process.exit(130); });
+    process.once('SIGTERM', () => { restore(); process.exit(143); });
+  }
+
   render(<Dashboard config={config} />);
 }
