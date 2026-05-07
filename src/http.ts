@@ -4,19 +4,26 @@ import { Agent, EnvHttpProxyAgent, fetch as undiciFetch, setGlobalDispatcher } f
 suppressEnvProxyExperimentalWarning();
 
 function suppressEnvProxyExperimentalWarning(): void {
-  const original = process.emit.bind(process);
-  process.emit = function patched(name: string | symbol, ...args: unknown[]): boolean {
+  const matches = (message: string | undefined): boolean =>
+    !!message && /EnvHttpProxyAgent/i.test(message);
+
+  const origEmitWarning = process.emitWarning.bind(process);
+  process.emitWarning = function patchedEmitWarning(
+    warning: string | Error,
+    ...args: unknown[]
+  ): void {
+    const message = typeof warning === 'string' ? warning : warning?.message;
+    if (matches(message)) return;
+    return (origEmitWarning as (...a: unknown[]) => void)(warning, ...args);
+  } as typeof process.emitWarning;
+
+  const origEmit = process.emit.bind(process);
+  process.emit = function patchedEmit(name: string | symbol, ...args: unknown[]): boolean {
     if (name === 'warning') {
       const w = args[0];
-      if (
-        w instanceof Error &&
-        w.name === 'ExperimentalWarning' &&
-        /EnvHttpProxyAgent/i.test(w.message)
-      ) {
-        return false;
-      }
+      if (w instanceof Error && matches(w.message)) return false;
     }
-    return (original as (n: string | symbol, ...a: unknown[]) => boolean)(name, ...args);
+    return (origEmit as (n: string | symbol, ...a: unknown[]) => boolean)(name, ...args);
   } as typeof process.emit;
 }
 
