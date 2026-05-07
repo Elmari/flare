@@ -46,7 +46,7 @@ export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuil
           : '<empty cause>',
   );
   // Pipeline jobs expose changeSets[] (plural); freestyle jobs expose a
-  // single changeSet. Merge both into one author list.
+  // single changeSet. Merge both into one item list.
   const changeSetItems = [
     ...(build.changeSet?.items ?? []),
     ...(build.changeSets ?? []).flatMap((cs) => cs.items ?? []),
@@ -54,6 +54,17 @@ export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuil
   const commitAuthors = changeSetItems
     .map((i) => i.authorEmail)
     .filter((e): e is string => Boolean(e));
+  // Pick the *most recent* commit by timestamp. If no timestamps are
+  // available we fall back to the first item, since Jenkins' git plugin
+  // typically lists commits newest-first. Reason: when a renovate branch
+  // is freshly indexed, Jenkins can dump *all* commits since the fork
+  // point into the changeSet — including unrelated old commits by the
+  // user. Anchoring on the latest commit avoids falsely tagging those
+  // builds as the user's.
+  const latestItem = changeSetItems
+    .filter((i) => Boolean(i.authorEmail))
+    .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))[0];
+  const latestAuthor = latestItem?.authorEmail;
 
   for (const c of causes) {
     if (c.userId && userTokens.has(c.userId.toLowerCase())) {
@@ -86,15 +97,13 @@ export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuil
     }
   }
 
-  for (const author of commitAuthors) {
-    if (emails.has(author.toLowerCase())) {
-      return {
-        match: true,
-        reason: `commit author=${author}`,
-        causes: causeStrings,
-        commitAuthors,
-      };
-    }
+  if (latestAuthor && emails.has(latestAuthor.toLowerCase())) {
+    return {
+      match: true,
+      reason: `latest commit author=${latestAuthor}`,
+      causes: causeStrings,
+      commitAuthors,
+    };
   }
 
   return { match: false, reason: 'no identity signal', causes: causeStrings, commitAuthors };
@@ -137,7 +146,7 @@ export function selectBuilds(
 
 const BUILD_FIELDS =
   'number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],' +
-  'changeSet[items[authorEmail]],changeSets[items[authorEmail]]';
+  'changeSet[items[authorEmail,timestamp]],changeSets[items[authorEmail,timestamp]]';
 const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,5},jobs[name,url,builds[${BUILD_FIELDS}]{0,5}]{0,50}`;
 
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
@@ -173,7 +182,10 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
       logSelection(jobConfig.path, jobConfig.my_builds_only, parsed, config.identity);
 
       const matches = selectBuilds(parsed, config.identity, jobConfig.my_builds_only);
+      const maxAgeMs = (config.settings.max_build_age_hours ?? 0) * 3600 * 1000;
+      const cutoff = maxAgeMs > 0 ? Date.now() - maxAgeMs : null;
       for (const { branch, build, recent } of matches) {
+        if (cutoff !== null && build.timestamp < cutoff) continue;
         statuses.push({
           job: branch ? `${jobConfig.path}/${branch}` : jobConfig.path,
           number: build.number,

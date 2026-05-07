@@ -3,6 +3,7 @@ import { z } from 'zod';
 const ChangeSetSchema = z.object({
   items: z.array(z.object({
     authorEmail: z.string().optional(),
+    timestamp: z.number().optional(),
   })).optional(),
 });
 

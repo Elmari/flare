@@ -49,6 +49,9 @@ export const ConfigSchema = z.object({
     notify_on_build_success: z.boolean().default(false),
     notify_on_review_requested: z.boolean().default(true),
     notification_timeout_seconds: z.number().int().min(1).max(60).default(10),
+    // Hide Jenkins rows whose latest matching build is older than this
+    // many hours. 0 disables the filter. Default: 7 days.
+    max_build_age_hours: z.number().int().min(0).default(168),
   }),
 });
 
@@ -111,6 +114,7 @@ settings:
   notify_on_build_success: false
   notify_on_review_requested: true
   notification_timeout_seconds: 10           # macOS: nur wirksam, wenn 'Banner'-Stil aktiv (System Settings → Notifications)
+  max_build_age_hours: 168                   # hide Jenkins rows whose latest "my" build is older than this (0 = no limit)
 
 # Optional: enable on-demand AI analysis ('a' in the dashboard).
 # Calls a Gemini generateContent endpoint (Vertex AI, the corporate
