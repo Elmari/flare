@@ -12,6 +12,7 @@ import {
   type PRSummaryResponse,
 } from '../llm.js';
 import { classifyHealth, relativeAge, type WatcherHealth } from '../health.js';
+import { log } from '../log.js';
 import type { Config } from '../config.js';
 
 const store = new Conf({ projectName: 'flare' });
@@ -436,6 +437,11 @@ export interface RunDashboardOptions {
 }
 
 export function runDashboard(config: Config, opts: RunDashboardOptions = {}) {
+  // Silence all pino logs in the TUI: they would interleave with Ink's
+  // ANSI rendering and corrupt the screen — visible to the user as a
+  // "endless log loop". Logs are valuable in `flare watch`, not here.
+  log.level = 'silent';
+
   const useFullscreen = opts.fullscreen !== false && process.stdout.isTTY;
 
   if (useFullscreen) {
