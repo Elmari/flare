@@ -65,7 +65,7 @@ sources:
     jobs:
       - path: team-x/api-service          # Leaf-Job
         my_builds_only: true
-      - path: scjsk/BandIT                # Multibranch-Projekt — alle Branches mit deinen Commits werden automatisch beobachtet
+      - path: team-x/api-multibranch      # Multibranch-Projekt — alle Branches mit deinen Commits werden automatisch beobachtet
         my_builds_only: true
 
   bitbucket:
