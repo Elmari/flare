@@ -69,7 +69,7 @@ export async function startWatcher(): Promise<void> {
         ? config.settings.battery_poll_interval_seconds
         : config.settings.poll_interval_seconds;
 
-      log.info(`Polling cycle started [DIAG] (Battery: ${battery}, Interval: ${interval}s)`);
+      log.debug(`Polling cycle started (Battery: ${battery}, Interval: ${interval}s)`);
 
       await pollAll(config);
 
@@ -104,9 +104,7 @@ async function pollJenkins(
   notified: NotifiedState,
   now: number,
 ): Promise<void> {
-  log.info('[DIAG] pollJenkins entered');
   const latest = await fetchLatestJenkinsStatus(config);
-  log.info({ count: latest.length }, '[DIAG] pollJenkins got results');
   const prevState = readState<JenkinsState>('jenkins');
   const nextState: JenkinsState = {};
 

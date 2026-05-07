@@ -138,9 +138,7 @@ export function selectBuilds(
 const BUILD_FIELDS =
   'number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],' +
   'changeSet[items[authorEmail]],changeSets[items[authorEmail]]';
-// Search window per branch/job: large enough that a "my" build buried under
-// foreign traffic still surfaces. The trend sparkline still slices to 5.
-const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,30},jobs[name,url,builds[${BUILD_FIELDS}]{0,30}]{0,50}`;
+const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,5},jobs[name,url,builds[${BUILD_FIELDS}]{0,5}]{0,50}`;
 
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
   const cfg = config.sources.jenkins;
@@ -153,7 +151,7 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
     return [];
   }
   if (cfg.jobs.length === 0) {
-    log.info('jenkins: no jobs configured — skipping');
+    log.debug('jenkins: no jobs configured — skipping');
     return [];
   }
 
@@ -161,7 +159,7 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
   const headers = { ...basic(cfg.username, apiToken), accept: 'application/json' };
   const statuses: JenkinsStatus[] = [];
 
-  log.info(
+  log.debug(
     { baseUrl: cfg.base_url, jobCount: cfg.jobs.length },
     `jenkins: starting fetch for ${cfg.jobs.length} job(s)`,
   );
@@ -212,7 +210,7 @@ function logSelection(
     });
 
   if (parsed.builds && parsed.builds.length > 0) {
-    log.info(
+    log.debug(
       {
         path,
         shape: 'leaf',
@@ -227,7 +225,7 @@ function logSelection(
   }
 
   const branches = parsed.jobs ?? [];
-  log.info(
+  log.debug(
     {
       path,
       shape: 'multibranch',
