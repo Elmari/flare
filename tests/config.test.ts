@@ -16,6 +16,17 @@ test('ConfigSchema accepts a minimal valid config and applies defaults', () => {
   assert.equal(parsed.settings.dashboard_refresh_seconds, 30);
   assert.equal(parsed.settings.notify_on_build_success, false);
   assert.equal(parsed.settings.notify_on_review_requested, true);
+  assert.equal(parsed.settings.notification_timeout_seconds, 10);
+});
+
+test('ConfigSchema rejects notification_timeout_seconds below the minimum', () => {
+  assert.throws(() =>
+    ConfigSchema.parse({
+      identity: { username: 'alice' },
+      sources: {},
+      settings: { notification_timeout_seconds: 0 },
+    }),
+  );
 });
 
 test('ConfigSchema accepts a full Jenkins + Bitbucket config', () => {

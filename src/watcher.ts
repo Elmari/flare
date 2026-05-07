@@ -2,7 +2,7 @@ import Conf from 'conf';
 import { log } from './log.js';
 import { loadConfig, type Config } from './config.js';
 import { isOnBattery } from './battery.js';
-import { notify } from './notifier.js';
+import { notify, setNotificationTimeout } from './notifier.js';
 import { fetchLatestJenkinsStatus, type JenkinsStatus } from './services/jenkins.js';
 import { fetchBitbucketPRs } from './services/bitbucket.js';
 import {
@@ -37,6 +37,7 @@ export async function startWatcher(): Promise<void> {
   while (true) {
     try {
       const config = loadConfig();
+      setNotificationTimeout(config.settings.notification_timeout_seconds);
       const battery = isOnBattery();
       const interval = battery
         ? config.settings.battery_poll_interval_seconds

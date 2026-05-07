@@ -5,6 +5,12 @@ import { fileURLToPath } from 'node:url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ICON_PATH = join(__dirname, '..', 'assets', 'flare.png');
 
+let timeoutSeconds = 10;
+
+export function setNotificationTimeout(seconds: number): void {
+  timeoutSeconds = Math.max(1, seconds);
+}
+
 export function notify(title: string, message: string, onClick?: () => void): void {
   notifier.notify(
     {
@@ -14,7 +20,7 @@ export function notify(title: string, message: string, onClick?: () => void): vo
       contentImage: ICON_PATH,
       sound: true,
       wait: true,
-      timeout: 10,
+      timeout: timeoutSeconds,
     },
     (err, response, metadata) => {
       if (response === 'activate' && onClick) {

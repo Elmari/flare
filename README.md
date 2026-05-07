@@ -82,6 +82,7 @@ settings:
   dashboard_refresh_seconds: 30            # Auto-Refresh im TUI
   notify_on_build_success: false           # auch bei grünen Builds pingen (default: aus)
   notify_on_review_requested: true         # pingen, wenn ein PR neu zur Review zugewiesen wird
+  notification_timeout_seconds: 10         # wie lange ein Toast sichtbar bleibt (1–60s)
 ```
 
 ## Welche Notifications du wann bekommst
@@ -96,6 +97,8 @@ settings:
 | Du wirst neu als Reviewer hinzugefügt    | Review Requested 👀       | an      | `notify_on_review_requested`   |
 
 Ein 4h-Cooldown pro `(Event, ID)` verhindert Wiederholungs-Notifications bei flapping Status.
+
+> **macOS-Hinweis zur Anzeigedauer**: `notification_timeout_seconds` wird vom Notification-Center nur respektiert, wenn die App auf **Banner** steht (auto-hide). Steht sie auf **Alert** (bleibt bis manuell weggeklickt), ignoriert macOS den Wert. Umstellen unter *System Settings → Notifications → Terminal/iTerm/Node*.
 
 ## AI-Analyse (optional)
 
