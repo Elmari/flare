@@ -45,7 +45,13 @@ export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuil
           ? `desc=${c.shortDescription}`
           : '<empty cause>',
   );
-  const commitAuthors = (build.changeSet?.items ?? [])
+  // Pipeline jobs expose changeSets[] (plural); freestyle jobs expose a
+  // single changeSet. Merge both into one author list.
+  const changeSetItems = [
+    ...(build.changeSet?.items ?? []),
+    ...(build.changeSets ?? []).flatMap((cs) => cs.items ?? []),
+  ];
+  const commitAuthors = changeSetItems
     .map((i) => i.authorEmail)
     .filter((e): e is string => Boolean(e));
 
@@ -58,6 +64,15 @@ export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuil
     }
     if (c.shortDescription) {
       const desc = c.shortDescription.toLowerCase();
+      // username substring (e.g. "Aborted by U153618")
+      if (username && desc.includes(username)) {
+        return {
+          match: true,
+          reason: `desc contains username '${identity.username}'`,
+          causes: causeStrings,
+          commitAuthors,
+        };
+      }
       for (const email of emails) {
         if (desc.includes(email)) {
           return {
@@ -121,7 +136,8 @@ export function selectBuilds(
 }
 
 const BUILD_FIELDS =
-  'number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],changeSet[items[authorEmail]]';
+  'number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],' +
+  'changeSet[items[authorEmail]],changeSets[items[authorEmail]]';
 // Search window per branch/job: large enough that a "my" build buried under
 // foreign traffic still surfaces. The trend sparkline still slices to 5.
 const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,30},jobs[name,url,builds[${BUILD_FIELDS}]{0,30}]{0,50}`;

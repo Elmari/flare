@@ -87,6 +87,29 @@ test('isMyBuild: changeSet email match requires exact equality, not substring', 
   assert.equal(isMyBuild(b, me), false);
 });
 
+test('isMyBuild: Pipeline-style changeSets[] (plural) is recognised', () => {
+  // Pipeline / multibranch jobs expose changeSets[] (plural). Earlier
+  // versions only checked the singular changeSet and missed all
+  // push-triggered builds on Pipeline jobs.
+  const b: JenkinsBuild = {
+    ...baseBuild,
+    actions: [{ causes: [{ shortDescription: 'Branch indexing' }] }],
+    changeSets: [
+      { items: [{ authorEmail: 'bob@firma.de' }] },
+      { items: [{ authorEmail: 'alice@firma.de' }] },
+    ],
+  };
+  assert.equal(isMyBuild(b, me), true);
+});
+
+test('isMyBuild: shortDescription substring match on username (e.g. "Aborted by alice")', () => {
+  const b: JenkinsBuild = {
+    ...baseBuild,
+    actions: [{ causes: [{ shortDescription: 'Aborted by alice' }] }],
+  };
+  assert.equal(isMyBuild(b, me), true);
+});
+
 test('isMyBuild: causes with no identifying fields are ignored', () => {
   const b: JenkinsBuild = {
     ...baseBuild,
