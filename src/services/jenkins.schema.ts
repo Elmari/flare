@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+const ChangeSetSchema = z.object({
+  items: z.array(z.object({
+    authorEmail: z.string().optional(),
+    timestamp: z.number().optional(),
+  })).optional(),
+});
+
 export const JenkinsBuildSchema = z.object({
   number: z.number(),
   url: z.string().url(),
@@ -12,11 +19,11 @@ export const JenkinsBuildSchema = z.object({
       shortDescription: z.string().optional(),
     })).optional(),
   })).optional(),
-  changeSet: z.object({
-    items: z.array(z.object({
-      authorEmail: z.string().optional(),
-    })).optional(),
-  }).optional(),
+  // Freestyle jobs expose a single `changeSet`; Pipeline (and most modern
+  // multibranch jobs with a Jenkinsfile) exposes a plural `changeSets[]`.
+  // Accept both so commit authors surface in either shape.
+  changeSet: ChangeSetSchema.optional(),
+  changeSets: z.array(ChangeSetSchema).optional(),
 });
 
 export const JenkinsBranchSchema = z.object({

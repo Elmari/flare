@@ -41,15 +41,37 @@ test('isMyBuild: webhook trigger with no matching commits returns false', () => 
   assert.equal(isMyBuild(b, me), false);
 });
 
-test('isMyBuild: webhook trigger with my commit in changeSet returns true', () => {
+test('isMyBuild: webhook trigger where my commit is the latest in changeSet returns true', () => {
   const b: JenkinsBuild = {
     ...baseBuild,
     actions: [{ causes: [{ userName: 'Bitbucket' }] }],
     changeSet: {
-      items: [{ authorEmail: 'bob@firma.de' }, { authorEmail: 'alice@firma.de' }],
+      items: [
+        { authorEmail: 'bob@firma.de', timestamp: 1000 },
+        { authorEmail: 'alice@firma.de', timestamp: 2000 },
+      ],
     },
   };
   assert.equal(isMyBuild(b, me), true);
+});
+
+test('isMyBuild: my commit present but a newer commit by someone else means not my build', () => {
+  // Renovate scenario: a freshly indexed branch's first build can include
+  // unrelated old commits by the user (since fork point) plus the bot's
+  // most recent commit. The build represents the bot's work, not mine.
+  const b: JenkinsBuild = {
+    ...baseBuild,
+    actions: [{ causes: [{ shortDescription: 'Branch indexing' }] }],
+    changeSets: [
+      {
+        items: [
+          { authorEmail: 'alice@firma.de', timestamp: 1000 },
+          { authorEmail: 'renovate@bot.com', timestamp: 5000 },
+        ],
+      },
+    ],
+  };
+  assert.equal(isMyBuild(b, me), false);
 });
 
 test('isMyBuild: shortDescription substring match on email is allowed (free-text field)', () => {
@@ -85,6 +107,29 @@ test('isMyBuild: changeSet email match requires exact equality, not substring', 
     changeSet: { items: [{ authorEmail: 'alice@firma.de.attacker.com' }] },
   };
   assert.equal(isMyBuild(b, me), false);
+});
+
+test('isMyBuild: Pipeline-style changeSets[] (plural) is recognised', () => {
+  // Pipeline / multibranch jobs expose changeSets[] (plural). Earlier
+  // versions only checked the singular changeSet and missed all
+  // push-triggered builds on Pipeline jobs.
+  const b: JenkinsBuild = {
+    ...baseBuild,
+    actions: [{ causes: [{ shortDescription: 'Branch indexing' }] }],
+    changeSets: [
+      { items: [{ authorEmail: 'bob@firma.de', timestamp: 1000 }] },
+      { items: [{ authorEmail: 'alice@firma.de', timestamp: 2000 }] },
+    ],
+  };
+  assert.equal(isMyBuild(b, me), true);
+});
+
+test('isMyBuild: shortDescription substring match on username (e.g. "Aborted by alice")', () => {
+  const b: JenkinsBuild = {
+    ...baseBuild,
+    actions: [{ causes: [{ shortDescription: 'Aborted by alice' }] }],
+  };
+  assert.equal(isMyBuild(b, me), true);
 });
 
 test('isMyBuild: causes with no identifying fields are ignored', () => {

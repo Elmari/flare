@@ -83,7 +83,17 @@ settings:
   notify_on_build_success: false           # also ping on green builds (default: off)
   notify_on_review_requested: true         # ping when you're newly added as reviewer
   notification_timeout_seconds: 10         # how long a toast stays visible (1–60s)
+  max_build_age_hours: 168                 # hide Jenkins rows whose latest "my" build is older than this (0 = no limit)
 ```
+
+### Identity matching for Jenkins builds
+
+A build is treated as *yours* when:
+
+- the trigger cause names you (`userId`, `userName`, or `shortDescription` containing your username/email — e.g. `Aborted by U153618`), **or**
+- the **latest commit** in the build's changeset was authored by one of your `identity.emails`.
+
+The "latest commit" rule (rather than "any commit") avoids false positives when Jenkins drops historical commits into a new branch's first build — for example renovate / dependabot branches that were forked from a base branch carrying your earlier commits. flare reads both the legacy `changeSet` (Freestyle) and the modern `changeSets[]` (Pipeline) shapes.
 
 ## Notification matrix
 
