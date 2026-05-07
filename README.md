@@ -107,7 +107,7 @@ In the dashboard, pressing `a` on a selected entry summarises its context via an
 - **Build failure** → the console log is fetched, sent to the LLM, and the response is rendered as a summary + likely cause + (when derivable) fix hint.
 - **PR review** → the diff is fetched and rendered as summary + key files + review focus.
 
-The feature is **off by default**. flare calls a **Gemini `generateContent` endpoint** directly — that's Vertex AI, your corporate Gemini gateway, or Google's public Generative Language API. Auth runs entirely through `custom_headers` with `${ENV_VAR}` substitution at request time (the same pattern as [`rewind`](../rewind)).
+The feature is **off by default**. flare calls a **Gemini `generateContent` endpoint** directly — that's Vertex AI, your corporate Gemini gateway, or Google's public Generative Language API. Auth runs entirely through `custom_headers` with `${ENV_VAR}` substitution at request time.
 
 ```yaml
 llm:
@@ -131,7 +131,7 @@ Important details:
 
 Analysis results are cached in memory for the lifetime of the TUI session, so pressing `a` on the same build or PR repeatedly does not burn additional tokens. Restarting the TUI clears the cache.
 
-## Architecture
+## Source layout
 
 - [src/watcher.ts](src/watcher.ts): polling, diffing, notification dispatch.
 - [src/ui/dashboard.tsx](src/ui/dashboard.tsx): Ink-based terminal UI (`flare status`).
