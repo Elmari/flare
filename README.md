@@ -1,21 +1,21 @@
 # flare ⏪
 
-> Proaktives Developer Dashboard & Notification System.
+> Proactive developer dashboard & notification system.
 
-`flare` überwacht deine Pull Requests und Jenkins-Builds im Hintergrund und benachrichtigt dich aktiv bei wichtigen Ereignissen (Build fehlgeschlagen, Changes Requested, Review angefordert, …).
+`flare` watches your pull requests and Jenkins builds in the background and pings you the moment something relevant happens (build failed, changes requested, review assigned, …).
 
 ## Features
 
-- **PR-Radar**: Notifications bei Approvals, Änderungswünschen und neu angeforderten Reviews.
-- **Jenkins-Watch**: Sofortige Meldung, wenn einer DEINER Builds fehlschlägt — auch über Multibranch-Projekte hinweg, ohne jeden Branch zu konfigurieren.
-- **Identity-Filter**: Erkennt automatisch, welche Builds/PRs dich betreffen (Trigger-User, Commit-Author oder Reviewer-Rolle).
-- **Notification-Cooldown**: 4h-Cooldown pro Event verhindert Spam bei flapping Status (NEEDS_WORK → UNAPPROVED → NEEDS_WORK).
-- **TUI Dashboard**: Terminal-UI mit Auto-Refresh, Tastatur-Navigation, Build-Trend-Sparkline (`✓✓✗✓✗`), Watcher-Heartbeat-Anzeige und „im Browser öffnen".
-- **AI-Analyse on demand**: Optional — `a` im Dashboard analysiert einen Build-Fail oder fasst einen PR-Diff via LLM zusammen.
-- **Batterie-schonend**: Passt das Abfrage-Intervall auf dem MacBook automatisch an, wenn du nicht am Strom hängst.
-- **Enterprise-Ready**: Unterstützt Proxies und Custom CAs (`HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`).
+- **PR radar**: notifications on approvals, change requests, and newly assigned reviews.
+- **Jenkins watch**: instant alerts when one of *your* builds fails — across multibranch projects, without configuring every branch by hand.
+- **Identity filter**: figures out on its own which builds and PRs concern you (trigger user, commit author, or reviewer role).
+- **Notification cooldown**: 4h cooldown per event prevents spam from flapping status (`NEEDS_WORK → UNAPPROVED → NEEDS_WORK`).
+- **TUI dashboard**: terminal UI with auto-refresh, keyboard navigation, build-trend sparkline (`✓✓✗✓✗`), watcher heartbeat, and "open in browser".
+- **AI analysis on demand**: optional — press `a` in the dashboard to summarise a build failure or a PR diff via an LLM.
+- **Battery friendly**: slows the polling cadence on a MacBook running on battery.
+- **Enterprise ready**: honours `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` and `NODE_EXTRA_CA_CERTS` for corporate proxies and custom CA bundles.
 
-## Quick Start
+## Quick start
 
 ```bash
 npm install
@@ -23,39 +23,39 @@ npm run build
 npm link
 
 flare config init
-cp .env.example .env # Tokens eintragen
+cp .env.example .env # fill in your tokens
 ```
 
-## Benutzung
+## Usage
 
-- `flare watch`: Startet den Hintergrund-Prozess.
-- `flare status`: Öffnet das interaktive Dashboard im Terminal (Fullscreen-Mode via Alt-Screen-Buffer; nach `q` kommt dein vorheriger Terminal-Inhalt unverändert zurück). `flare status --no-fullscreen` rendert inline, falls du Output kopieren oder mitscrollen willst.
-- `flare install-agent` (macOS): registriert einen LaunchAgent, der `flare watch` automatisch beim Login startet und im Hintergrund am Leben hält. Logs landen in `~/Library/Logs/flare/watcher.{out,err}.log`.
-- `flare reload-agent` (macOS): startet den LaunchAgent neu — nötig nach `npm run build`, damit der laufende Watcher den neuen Code zieht.
-- `flare uninstall-agent` (macOS): unloaded den LaunchAgent und entfernt die plist wieder.
+- `flare watch`: starts the background watcher.
+- `flare status`: opens the interactive dashboard in the terminal (fullscreen via the alt-screen buffer; pressing `q` brings your previous terminal contents back unchanged). Use `flare status --no-fullscreen` to render inline if you want to copy output or keep it in scrollback.
+- `flare install-agent` (macOS): registers a LaunchAgent that starts `flare watch` on login and keeps it alive in the background. Logs go to `~/Library/Logs/flare/watcher.{out,err}.log`.
+- `flare reload-agent` (macOS): restarts the LaunchAgent — needed after `npm run build` so the running watcher picks up the new code.
+- `flare uninstall-agent` (macOS): unloads the LaunchAgent and removes the plist.
 
-> Beim LaunchAgent-Mode liest flare zusätzlich `~/.config/flare/.env`, da LaunchAgents keine Shell-Profile sehen. Lege deine Tokens (`JENKINS_TOKEN`, `BITBUCKET_PAT`, ggf. `GEMINI_API_KEY`) dort ab.
+> When running as a LaunchAgent, flare additionally loads `~/.config/flare/.env`, since LaunchAgents don't inherit your shell profile. Put your tokens (`JENKINS_TOKEN`, `BITBUCKET_PAT`, optionally `GEMINI_API_KEY`) there.
 
-### Dashboard-Shortcuts
+### Dashboard shortcuts
 
-| Taste         | Wirkung                                            |
-| ------------- | -------------------------------------------------- |
-| `↑` / `↓`     | Eintrag im aktiven Panel auswählen                 |
-| `Tab`         | zwischen Jenkins / Bitbucket wechseln              |
-| `o` / `Enter` | ausgewählten Eintrag im Browser öffnen             |
-| `a`           | KI-Analyse für markierten Eintrag (siehe AI-Setup) |
-| `r`           | Refresh erzwingen                                  |
-| `q` / `Esc`   | Detail schließen bzw. beenden                      |
+| Key           | Action                                              |
+| ------------- | --------------------------------------------------- |
+| `↑` / `↓`     | move selection within the active panel              |
+| `Tab`         | switch between Jenkins and Bitbucket panels         |
+| `o` / `Enter` | open the selected entry in your browser             |
+| `a`           | AI analysis for the selected entry (see AI setup)   |
+| `r`           | force a refresh                                     |
+| `q` / `Esc`   | close the detail pane, or quit                      |
 
-## Konfiguration
+## Configuration
 
-`flare config init` schreibt eine Sample-Config nach `~/.config/flare/config.yaml`. Wichtige Felder:
+`flare config init` writes a sample config to `~/.config/flare/config.yaml`. Key fields:
 
 ```yaml
 identity:
-  username: your.username       # SSO-Username (matched gegen Jenkins-Trigger und Bitbucket-Reviewer-Slug)
+  username: your.username       # SSO username (matched against Jenkins triggers and Bitbucket reviewer slugs)
   emails:
-    - you@firma.de              # Commit-Author-Email für Multibranch-Erkennung
+    - you@firma.de              # commit-author email used for multibranch attribution
 
 sources:
   jenkins:
@@ -63,79 +63,81 @@ sources:
     username: your.username
     api_token_env: JENKINS_TOKEN
     jobs:
-      - path: team-x/api-service          # Leaf-Job
+      - path: team-x/api-service          # leaf job
         my_builds_only: true
-      - path: team-x/api-multibranch      # Multibranch-Projekt — alle Branches mit deinen Commits werden automatisch beobachtet
+      - path: team-x/api-multibranch      # multibranch project — every branch with your commits is watched automatically
         my_builds_only: true
 
   bitbucket:
     base_url: https://bitbucket.firma.de
     pat_env: BITBUCKET_PAT
     my_prs_only: true
-    ignored_authors:                       # Service-Accounts, deren PRs ignoriert werden sollen
+    ignored_authors:                       # service accounts whose PRs should be filtered out
       - dependabot
       - release-bot
 
 settings:
-  poll_interval_seconds: 120               # Watcher-Polling im Netz
-  battery_poll_interval_seconds: 600       # langsameres Polling auf Akku (macOS)
-  dashboard_refresh_seconds: 30            # Auto-Refresh im TUI
-  notify_on_build_success: false           # auch bei grünen Builds pingen (default: aus)
-  notify_on_review_requested: true         # pingen, wenn ein PR neu zur Review zugewiesen wird
-  notification_timeout_seconds: 10         # wie lange ein Toast sichtbar bleibt (1–60s)
+  poll_interval_seconds: 120               # watcher polling cadence on AC power
+  battery_poll_interval_seconds: 600       # slower cadence on battery (macOS)
+  dashboard_refresh_seconds: 30            # TUI auto-refresh interval
+  notify_on_build_success: false           # also ping on green builds (default: off)
+  notify_on_review_requested: true         # ping when you're newly added as reviewer
+  notification_timeout_seconds: 10         # how long a toast stays visible (1–60s)
 ```
 
-## Welche Notifications du wann bekommst
+## Notification matrix
 
-| Event                                    | Notification              | Default | Override                       |
-| ---------------------------------------- | ------------------------- | ------- | ------------------------------ |
-| Build wechselt nach `FAILURE`            | Build Failed 🚨           | an      | —                              |
-| Build geht von `FAILURE` → `SUCCESS`     | Build Fixed ✅            | an      | —                              |
-| Build wechselt nach `SUCCESS` (allgemein)| Build Passed ✅           | aus     | `notify_on_build_success`      |
-| PR-Status wechselt zu `NEEDS_WORK`       | Changes Requested ⚠️       | an      | —                              |
-| PR-Status wechselt zu `APPROVED`         | PR Approved ✅            | an      | —                              |
-| Du wirst neu als Reviewer hinzugefügt    | Review Requested 👀       | an      | `notify_on_review_requested`   |
+| Event                                      | Notification          | Default | Override                       |
+| ------------------------------------------ | --------------------- | ------- | ------------------------------ |
+| Build transitions to `FAILURE`             | Build Failed 🚨       | on      | —                              |
+| Build goes from `FAILURE` → `SUCCESS`      | Build Fixed ✅        | on      | —                              |
+| Build transitions to `SUCCESS` (general)   | Build Passed ✅       | off     | `notify_on_build_success`      |
+| PR status changes to `NEEDS_WORK`          | Changes Requested ⚠️   | on      | —                              |
+| PR status changes to `APPROVED`            | PR Approved ✅        | on      | —                              |
+| You are newly added as a reviewer          | Review Requested 👀   | on      | `notify_on_review_requested`   |
 
-Ein 4h-Cooldown pro `(Event, ID)` verhindert Wiederholungs-Notifications bei flapping Status.
+A 4h cooldown per `(event, id)` prevents repeat notifications when status flaps.
 
-> **macOS-Hinweis zur Anzeigedauer**: `notification_timeout_seconds` ist auf macOS praktisch wirkungslos — Banner-Style Notifications werden vom System nach ~5s ausgeblendet, Alert-Style bleiben bis du sie wegklickst (in beiden Fällen ignoriert macOS den Wert). Wenn dir Notifications zu schnell verschwinden: Stil auf **Hinweise (Alert)** umstellen unter *System Settings → Notifications → Terminal / iTerm / Node*. Auf **Windows/Linux** wird der Wert als echte Display-Zeit interpretiert.
+> **macOS note on display duration**: `notification_timeout_seconds` is effectively a no-op on macOS — the system auto-dismisses *banner*-style toasts after roughly 5s no matter what we send, and *alert*-style toasts stay until you click them away (also ignoring the value). If your toasts disappear too quickly, switch the hosting app's notification style to **Alerts** under *System Settings → Notifications → Terminal / iTerm / Node*. On **Windows/Linux** the value is honoured as the actual display time.
 
-## AI-Analyse (optional)
+## AI analysis (optional)
 
-Im Dashboard fasst `a` auf einem markierten Eintrag den Kontext via LLM zusammen:
+In the dashboard, pressing `a` on a selected entry summarises its context via an LLM:
 
-- **Build-Failure** → Console-Log wird gefetched, an den LLM geschickt, Antwort als Summary + likely cause + (wenn ableitbar) Fix-Hint angezeigt.
-- **PR-Review** → Diff wird gefetched und als Summary + key files + review focus aufbereitet.
+- **Build failure** → the console log is fetched, sent to the LLM, and the response is rendered as a summary + likely cause + (when derivable) fix hint.
+- **PR review** → the diff is fetched and rendered as summary + key files + review focus.
 
-Das Feature ist **standardmäßig aus**. flare ruft den **Gemini `generateContent`-Endpoint** direkt auf — also Vertex AI, das Corp-Gemini-Gateway oder Googles öffentliche Generative Language API. Auth läuft komplett über `custom_headers` mit `${ENV_VAR}`-Substitution zur Laufzeit (gleiches Muster wie [`rewind`](../rewind)).
+The feature is **off by default**. flare calls a **Gemini `generateContent` endpoint** directly — that's Vertex AI, your corporate Gemini gateway, or Google's public Generative Language API. Auth runs entirely through `custom_headers` with `${ENV_VAR}` substitution at request time (the same pattern as [`rewind`](../rewind)).
 
 ```yaml
 llm:
   endpoint: https://corp-llm-proxy.firma.de/projects/PROJECT/locations/europe-west1/publishers/google/models/gemini-2.5-flash:generateContent
   custom_headers:
     x-api-key: '${GEMINI_API_KEY}'
-    # x-tenant-id: team-x          # weitere Header je nach Gateway
-  max_log_kb: 30                    # Console-Log wird auf die letzten N KB beschränkt
-  max_diff_kb: 50                   # PR-Diff wird auf die ersten N KB beschränkt
+    # x-tenant-id: team-x          # add whatever the gateway requires
+  max_log_kb: 30                    # console log is truncated to the last N KB
+  max_diff_kb: 50                   # PR diff is truncated to the first N KB
 ```
 
-Wichtige Punkte:
+Important details:
 
-- **Kein Bearer-Header**: flare schickt keinen `Authorization: Bearer …`, weil das Corp-Gateway `x-api-key` (oder einen anderen Custom-Header) erwartet. Setze die Auth komplett über `custom_headers`.
-- **Modell steckt im URL**: `…/models/gemini-2.5-flash:generateContent` — kein separates `model:`-Feld nötig.
-- **Env-Var-Substitution**: Werte mit `${VAR}` werden zur Laufzeit aus `process.env` aufgelöst. Fehlende Variable → klarer Fehler beim Start des `a`-Calls.
-- **Proxy & CA**: `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` werden automatisch geehrt; `NODE_EXTRA_CA_CERTS` (Pfad zur PEM-Datei) für Corp-Custom-CAs.
-- **JSON-Output**: flare setzt `generationConfig.responseMimeType: application/json`, parsed mit Zod, fällt bei kaputtem JSON auf Raw-Text-Anzeige zurück.
+- **No bearer header**: flare does *not* send `Authorization: Bearer …` because corporate gateways typically expect `x-api-key` (or another custom header). Configure auth entirely via `custom_headers`.
+- **The model lives in the URL**: `…/models/gemini-2.5-flash:generateContent` — no separate `model:` field needed.
+- **Env-var substitution**: values containing `${VAR}` are resolved from `process.env` at request time. A missing variable produces a clear error before the call is sent.
+- **Proxy & CA**: `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` are honoured automatically; set `NODE_EXTRA_CA_CERTS` to a PEM file path for corporate custom CAs.
+- **JSON output**: flare sets `generationConfig.responseMimeType: application/json`, parses with Zod, and falls back to a raw-text view if the response isn't valid JSON.
 
-**Datenschutz-Hinweis**: Bei jedem Druck auf `a` wird der **vollständige (truncated) Build-Log** bzw. **PR-Diff** an den konfigurierten Endpoint geschickt. Verwende kein öffentliches LLM für Repos mit sensitiven Inhalten — ein internes Gateway oder lokales Ollama ist die sichere Variante. Der Watcher selbst (`flare watch`) macht **keine** LLM-Calls.
+**Privacy note**: every press of `a` sends the **full (truncated) build log** or **PR diff** to the configured endpoint. Don't point flare at a public LLM for repositories with sensitive content — an internal gateway or a local Ollama is the safe choice. The watcher itself (`flare watch`) makes **no** LLM calls.
 
-Analyse-Ergebnisse werden für die Dauer der TUI-Session in-memory gecached; mehrfaches `a` auf denselben Build/PR verbrennt keine Tokens. Bei TUI-Restart wird neu analysiert.
+Analysis results are cached in memory for the lifetime of the TUI session, so pressing `a` on the same build or PR repeatedly does not burn additional tokens. Restarting the TUI clears the cache.
 
-## Architektur
+## Architecture
 
-- [src/watcher.ts](src/watcher.ts): Polling, Diffing, Notification-Dispatch.
-- [src/ui/dashboard.tsx](src/ui/dashboard.tsx): Ink-basiertes Terminal-UI (`flare status`).
-- [src/services/jenkins.ts](src/services/jenkins.ts) und [src/services/bitbucket.ts](src/services/bitbucket.ts): API-Adapter mit Zod-Validierung.
-- [src/llm.ts](src/llm.ts): OpenAI-kompatibler Chat-Client + Prompt-Builder + Antwort-Schemas für die `a`-Aktion.
-- [src/dedup.ts](src/dedup.ts): Notification-Cooldown-Logik mit Tests in [tests/dedup.test.ts](tests/dedup.test.ts).
-- `assets/flare.svg` ist die Quelle für das App-Icon. `npm run build:icon` rendert daraus `assets/flare.png`, das `node-notifier` für Toasts verwendet.
+- [src/watcher.ts](src/watcher.ts): polling, diffing, notification dispatch.
+- [src/ui/dashboard.tsx](src/ui/dashboard.tsx): Ink-based terminal UI (`flare status`).
+- [src/services/jenkins.ts](src/services/jenkins.ts) and [src/services/bitbucket.ts](src/services/bitbucket.ts): API adapters with Zod validation.
+- [src/llm.ts](src/llm.ts): Gemini `generateContent` client + prompt builders + response schemas powering the `a` action.
+- [src/dedup.ts](src/dedup.ts): notification cooldown logic, covered by [tests/dedup.test.ts](tests/dedup.test.ts).
+- [src/health.ts](src/health.ts): pure helpers behind the watcher heartbeat shown in the dashboard header.
+- [src/agent.ts](src/agent.ts): macOS LaunchAgent install / reload / uninstall logic.
+- `assets/flare.svg` is the source for the app icon. `npm run build:icon` renders it into `assets/flare.png`, which `node-notifier` uses for toast notifications.
