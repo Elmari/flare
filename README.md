@@ -31,6 +31,7 @@ cp .env.example .env # Tokens eintragen
 - `flare watch`: Startet den Hintergrund-Prozess.
 - `flare status`: Öffnet das interaktive Dashboard im Terminal (Fullscreen-Mode via Alt-Screen-Buffer; nach `q` kommt dein vorheriger Terminal-Inhalt unverändert zurück). `flare status --no-fullscreen` rendert inline, falls du Output kopieren oder mitscrollen willst.
 - `flare install-agent` (macOS): registriert einen LaunchAgent, der `flare watch` automatisch beim Login startet und im Hintergrund am Leben hält. Logs landen in `~/Library/Logs/flare/watcher.{out,err}.log`.
+- `flare reload-agent` (macOS): startet den LaunchAgent neu — nötig nach `npm run build`, damit der laufende Watcher den neuen Code zieht.
 - `flare uninstall-agent` (macOS): unloaded den LaunchAgent und entfernt die plist wieder.
 
 > Beim LaunchAgent-Mode liest flare zusätzlich `~/.config/flare/.env`, da LaunchAgents keine Shell-Profile sehen. Lege deine Tokens (`JENKINS_TOKEN`, `BITBUCKET_PAT`, ggf. `GEMINI_API_KEY`) dort ab.

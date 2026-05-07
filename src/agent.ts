@@ -102,6 +102,25 @@ export function installAgent(): void {
   console.log(`  To remove: flare uninstall-agent`);
 }
 
+export function reloadAgent(): void {
+  if (process.platform !== 'darwin') {
+    throw new Error('flare reload-agent currently supports macOS only.');
+  }
+
+  const target = plistPath();
+  if (!existsSync(target)) {
+    throw new Error(
+      `No LaunchAgent plist at ${target}.\n` +
+      '  Run `flare install-agent` first.',
+    );
+  }
+
+  bootout(true);
+  execSync(`launchctl bootstrap gui/$(id -u) ${shellQuote(target)}`, { stdio: 'inherit' });
+  console.log(`✓ Reloaded LaunchAgent (${target})`);
+  console.log(`  Logs: ${logsDir()}/watcher.{out,err}.log`);
+}
+
 export function uninstallAgent(): void {
   if (process.platform !== 'darwin') {
     throw new Error('flare uninstall-agent currently supports macOS only.');

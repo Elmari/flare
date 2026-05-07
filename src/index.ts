@@ -67,6 +67,19 @@ program
   });
 
 program
+  .command('reload-agent')
+  .description('Restart the macOS LaunchAgent (pick up a new build or config)')
+  .action(async () => {
+    try {
+      const { reloadAgent } = await import('./agent.js');
+      reloadAgent();
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
   .command('uninstall-agent')
   .description('Unload and remove the macOS LaunchAgent')
   .action(async () => {
