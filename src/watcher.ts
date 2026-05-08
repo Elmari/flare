@@ -52,6 +52,19 @@ interface BitbucketPRState {
 }
 type BitbucketState = Record<string, BitbucketPRState>;
 
+export function shouldNotifyReviewRequested(
+  pr: { iAmAuthor: boolean; approvalStatus: 'APPROVED' | 'NEEDS_WORK' | 'UNAPPROVED' },
+  initialized: boolean,
+  notifyOnReviewRequested: boolean,
+): boolean {
+  if (!initialized) return false;
+  if (pr.iAmAuthor) return false;
+  if (!notifyOnReviewRequested) return false;
+  // If we've never bookkept this PR but the user has already taken action on it
+  // (approved or requested changes), don't fire a stale review-request notification.
+  return pr.approvalStatus === 'UNAPPROVED';
+}
+
 function readState<T>(key: string): T {
   return ((store.get(key) as T | undefined) ?? ({} as T));
 }
@@ -159,7 +172,7 @@ async function pollBitbucket(
     const prev = prevState[pr.id];
 
     if (!prev) {
-      if (initialized && !pr.iAmAuthor && config.settings.notify_on_review_requested) {
+      if (shouldNotifyReviewRequested(pr, initialized, config.settings.notify_on_review_requested)) {
         const key = `pr:${pr.id}:REVIEW_REQUESTED`;
         if (shouldNotify(key, notified, now)) {
           notify('Review Requested 👀', `PR #${pr.id} in ${pr.repo}: ${pr.title}`);
