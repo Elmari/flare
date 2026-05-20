@@ -87,15 +87,20 @@ export async function fetchLatestBranchAuthorEmail(
   const headers = { ...bearer(pat), accept: 'application/json' };
   const url = `${cfg.base_url.replace(/\/$/, '')}/rest/api/1.0/projects/${encodeURIComponent(projectKey)}/repos/${encodeURIComponent(slug)}/commits`;
 
+  // Pass the full ref. With just the bare branch name, Bitbucket Server
+  // tries to resolve it as a commit hash first and 404s for branches that
+  // contain slashes (e.g. 'feature/PROJ-1234').
+  const ref = branchName.startsWith('refs/') ? branchName : `refs/heads/${branchName}`;
+
   try {
     const data = await request<{ values?: Array<{ author?: { emailAddress?: string } }> }>(url, {
       headers,
-      query: { until: branchName, limit: 1 },
+      query: { until: ref, limit: 1 },
     });
     return data.values?.[0]?.author?.emailAddress;
   } catch (err) {
     log.warn(
-      { repo, branchName, err: (err as Error).message },
+      { repo, branchName, ref, err: (err as Error).message },
       'bitbucket: latest branch author lookup failed',
     );
     return undefined;
