@@ -146,9 +146,16 @@ Important details:
 
 Analysis results are cached in memory for the lifetime of the TUI session, so pressing `a` on the same build or PR repeatedly does not burn additional tokens. Restarting the TUI clears the cache.
 
+## Watcher snapshot (for external consumers)
+
+After every poll cycle the watcher writes a JSON snapshot of the current Jenkins and Bitbucket state next to the conf store, at `<conf-dir>/snapshot.json` (e.g. `~/Library/Preferences/flare-nodejs/snapshot.json` on macOS, `~/.config/flare-nodejs/snapshot.json` on Linux, `%APPDATA%\flare-nodejs\Config\snapshot.json` on Windows). Writes are atomic via tmp-file rename, so consumers can use `fs.watch` for push updates without seeing torn reads.
+
+Shape: `{ schema_version: 1, last_poll_at: number, jenkins: JenkinsStatus[], bitbucket: BitbucketPRStatus[] }`. Types are exported from [src/snapshot.ts](src/snapshot.ts).
+
 ## Source layout
 
 - [src/watcher.ts](src/watcher.ts): polling, diffing, notification dispatch.
+- [src/snapshot.ts](src/snapshot.ts): per-poll snapshot file written for external consumers.
 - [src/ui/dashboard.tsx](src/ui/dashboard.tsx): Ink-based terminal UI (`flare status`).
 - [src/services/jenkins.ts](src/services/jenkins.ts) and [src/services/bitbucket.ts](src/services/bitbucket.ts): API adapters with Zod validation.
 - [src/llm.ts](src/llm.ts): Gemini `generateContent` client + prompt builders + response schemas powering the `a` action.

@@ -8,13 +8,14 @@ import {
   type BuildResult,
   type JenkinsStatus,
 } from './services/jenkins.js';
-import { fetchBitbucketPRs } from './services/bitbucket.js';
+import { fetchBitbucketPRs, type BitbucketPRStatus } from './services/bitbucket.js';
 import {
   shouldNotify,
   markNotified,
   pruneNotified,
   type NotifiedState,
 } from './dedup.js';
+import { SNAPSHOT_SCHEMA_VERSION, writeSnapshot } from './snapshot.js';
 
 const store = new Conf({ projectName: 'flare' });
 
@@ -104,20 +105,27 @@ async function pollAll(config: Config): Promise<void> {
   const now = Date.now();
   const notified = pruneNotified(readState<NotifiedState>('notified'), now);
 
-  await Promise.all([
+  const [jenkins, bitbucket] = await Promise.all([
     pollJenkins(config, notified, now),
     pollBitbucket(config, notified, now),
   ]);
 
   store.set('notified', notified);
   store.set('last_poll_at', now);
+
+  writeSnapshot({
+    schema_version: SNAPSHOT_SCHEMA_VERSION,
+    last_poll_at: now,
+    jenkins,
+    bitbucket,
+  });
 }
 
 async function pollJenkins(
   config: Config,
   notified: NotifiedState,
   now: number,
-): Promise<void> {
+): Promise<JenkinsStatus[]> {
   const latest = await fetchLatestJenkinsStatus(config);
   const prevState = readState<JenkinsState>('jenkins');
   const nextState: JenkinsState = {};
@@ -162,13 +170,14 @@ async function pollJenkins(
   }
 
   store.set('jenkins', nextState);
+  return latest;
 }
 
 async function pollBitbucket(
   config: Config,
   notified: NotifiedState,
   now: number,
-): Promise<void> {
+): Promise<BitbucketPRStatus[]> {
   const prs = await fetchBitbucketPRs(config);
   const prevState = readState<BitbucketState>('bitbucket');
   const nextState: BitbucketState = {};
@@ -209,4 +218,5 @@ async function pollBitbucket(
 
   store.set('bitbucket', nextState);
   store.set('bitbucket_initialized', true);
+  return prs;
 }
