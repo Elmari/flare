@@ -94,7 +94,13 @@ const Dashboard: React.FC<Props> = ({ config }) => {
         fetchBitbucketPRs(config),
       ]);
       setJenkins(j);
-      setPrs(p);
+      // Mine first, then PRs awaiting my review — keeps bitbucketIdx aligned
+      // with the same ordering the panel renders.
+      const sortedPRs = [...p].sort((a, b) => {
+        if (a.iAmAuthor !== b.iAmAuthor) return a.iAmAuthor ? -1 : 1;
+        return b.updatedDate - a.updatedDate;
+      });
+      setPrs(sortedPRs);
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {
@@ -359,15 +365,26 @@ const Dashboard: React.FC<Props> = ({ config }) => {
           {prs.map((pr, i) => {
             const isSelected = panel === 'bitbucket' && i === bitbucketIdx;
             const badge = prStatusBadge(pr.approvalStatus);
+            const showMineHeader = pr.iAmAuthor && i === 0;
+            const showReviewingHeader =
+              !pr.iAmAuthor && (i === 0 || prs[i - 1].iAmAuthor);
             return (
-              <Box key={pr.id}>
-                <Text color={isSelected ? 'magenta' : undefined}>{isSelected ? '▸ ' : '  '}</Text>
-                <Text color={badge.color}>{badge.glyph}</Text>
-                <Text color="cyan"> {pr.repo} #{pr.id} </Text>
-                <Box flexGrow={1}>
-                  <Text wrap="truncate-end">{pr.title}</Text>
+              <React.Fragment key={pr.id}>
+                {showMineHeader && (
+                  <Text bold color="cyan">— My PRs —</Text>
+                )}
+                {showReviewingHeader && (
+                  <Text bold color="cyan">— Reviewing —</Text>
+                )}
+                <Box>
+                  <Text color={isSelected ? 'magenta' : undefined}>{isSelected ? '▸ ' : '  '}</Text>
+                  <Text color={badge.color}>{badge.glyph}</Text>
+                  <Text color="cyan"> {pr.repo} #{pr.id} </Text>
+                  <Box flexGrow={1}>
+                    <Text wrap="truncate-end">{pr.title}</Text>
+                  </Box>
                 </Box>
-              </Box>
+              </React.Fragment>
             );
           })}
         </Box>
