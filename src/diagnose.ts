@@ -11,6 +11,7 @@ import {
   jobApiUrl,
   type Identity,
 } from './services/jenkins.js';
+import { fetchLatestBranchAuthorEmail } from './services/bitbucket.js';
 
 const DEBUG_SCAN_COUNT = 30;
 const DEBUG_TREE_QUERY = `builds[${BUILD_FIELDS}]{0,${DEBUG_SCAN_COUNT}},jobs[name,url,builds[${BUILD_FIELDS}]{0,${DEBUG_SCAN_COUNT}}]{0,50}`;
@@ -55,12 +56,15 @@ export async function diagnoseJenkinsJob(config: Config, jobPath: string): Promi
     `Watcher scans:   ${config.settings.recent_builds_count} latest builds per branch (settings.recent_builds_count)`,
   );
   lines.push(`Debug scanned:   ${DEBUG_SCAN_COUNT} latest builds per branch (for this diagnose run)`);
+  lines.push(
+    `Bitbucket repo:  ${jobConfig.bitbucket_repo ?? '(not set — fallback disabled)'}`,
+  );
   lines.push('');
 
   if (parsed.builds && parsed.builds.length > 0) {
     lines.push(`Shape: leaf job, ${parsed.builds.length} builds returned`);
     lines.push('');
-    formatBuilds(lines, parsed.builds, config.identity, jobConfig.my_builds_only, cutoff);
+    formatBuilds(lines, parsed.builds, config.identity, jobConfig.my_builds_only, cutoff, undefined);
   } else {
     const branches = parsed.jobs ?? [];
     lines.push(`Shape: multibranch, ${branches.length} branches returned (Jenkins caps at 50)`);
@@ -70,9 +74,25 @@ export async function diagnoseJenkinsJob(config: Config, jobPath: string): Promi
       lines.push(`--- Branch: ${branch.name}  (${builds.length} builds) ---`);
       if (builds.length === 0) {
         lines.push('  (no builds)');
-      } else {
-        formatBuilds(lines, builds, config.identity, jobConfig.my_builds_only, cutoff);
+        lines.push('');
+        continue;
       }
+      // Pre-compute Jenkins-only match. If no match and a Bitbucket repo is
+      // configured, fetch the branch's latest author so the diagnose output
+      // mirrors what the watcher actually sees.
+      const jenkinsOnlyMatch = builds.some((b) => diagnoseMyBuild(b, config.identity).match);
+      let branchAuthor: string | undefined;
+      if (!jenkinsOnlyMatch && jobConfig.bitbucket_repo) {
+        branchAuthor = await fetchLatestBranchAuthorEmail(
+          config,
+          jobConfig.bitbucket_repo,
+          branch.name,
+        );
+        lines.push(
+          `  bitbucket fallback: latest author = ${branchAuthor ?? '(none / lookup failed)'}`,
+        );
+      }
+      formatBuilds(lines, builds, config.identity, jobConfig.my_builds_only, cutoff, branchAuthor);
       lines.push('');
     }
   }
@@ -86,18 +106,19 @@ function formatBuilds(
   identity: Identity,
   myBuildsOnly: boolean,
   cutoff: number | null,
+  branchAuthorEmail: string | undefined,
 ): void {
   // Replicate selection logic: first build that matches (or just the first build
   // if my_builds_only is off).
   const selectedIdx = builds.findIndex((b) =>
-    myBuildsOnly ? diagnoseMyBuild(b, identity).match : true,
+    myBuildsOnly ? diagnoseMyBuild(b, identity, branchAuthorEmail).match : true,
   );
   const selectedBuild = selectedIdx >= 0 ? builds[selectedIdx] : null;
   const droppedAsStale =
     selectedBuild !== null && cutoff !== null && selectedBuild.timestamp < cutoff;
 
   builds.forEach((b, i) => {
-    const d = diagnoseMyBuild(b, identity);
+    const d = diagnoseMyBuild(b, identity, branchAuthorEmail);
     const ts = new Date(b.timestamp).toISOString();
     const result = (b.result ?? 'RUNNING').padEnd(8);
     const matchTag = d.match ? '✓ match  ' : '· no-match';

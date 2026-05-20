@@ -7,6 +7,11 @@ import { z } from 'zod';
 const JenkinsJobSchema = z.object({
   path: z.string(),
   my_builds_only: z.boolean().default(true),
+  // Optional Bitbucket repo identifier ("PROJECTKEY/repo-slug") used as a
+  // fallback when Jenkins delivers no usable changeSet — typical for
+  // initial branch-indexing builds. Flare then asks Bitbucket directly
+  // who last committed on the branch.
+  bitbucket_repo: z.string().optional(),
 });
 
 const JenkinsConfigSchema = z.object({
@@ -102,6 +107,9 @@ sources:
     jobs:
       - path: team-x/api-service
         my_builds_only: true
+        # Optional: ask Bitbucket who last committed on a branch when Jenkins'
+        # changeSet is empty (e.g. initial branch-indexing builds).
+        # bitbucket_repo: TEAMX/api-service
       - path: team-x/web-app
         my_builds_only: true
 

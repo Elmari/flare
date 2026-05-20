@@ -69,6 +69,39 @@ export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStat
   return Array.from(new Map(prs.map(p => [p.id, p])).values());
 }
 
+export async function fetchLatestBranchAuthorEmail(
+  config: Config,
+  repo: string,
+  branchName: string,
+): Promise<string | undefined> {
+  const cfg = config.sources.bitbucket;
+  if (!cfg || !cfg.enabled) return undefined;
+
+  const [projectKey, slug] = repo.split('/');
+  if (!projectKey || !slug) {
+    log.warn({ repo }, 'bitbucket: invalid repo identifier for branch author lookup (expected "PROJECT/slug")');
+    return undefined;
+  }
+
+  const pat = readEnvSecret(cfg.pat_env);
+  const headers = { ...bearer(pat), accept: 'application/json' };
+  const url = `${cfg.base_url.replace(/\/$/, '')}/rest/api/1.0/projects/${encodeURIComponent(projectKey)}/repos/${encodeURIComponent(slug)}/commits`;
+
+  try {
+    const data = await request<{ values?: Array<{ author?: { emailAddress?: string } }> }>(url, {
+      headers,
+      query: { until: branchName, limit: 1 },
+    });
+    return data.values?.[0]?.author?.emailAddress;
+  } catch (err) {
+    log.warn(
+      { repo, branchName, err: (err as Error).message },
+      'bitbucket: latest branch author lookup failed',
+    );
+    return undefined;
+  }
+}
+
 export interface PRDiff {
   text: string;
   truncated: boolean;

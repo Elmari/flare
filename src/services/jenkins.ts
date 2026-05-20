@@ -6,6 +6,7 @@ import {
   type JenkinsBuild,
   type JenkinsJobResponse,
 } from './jenkins.schema.js';
+import { fetchLatestBranchAuthorEmail } from './bitbucket.js';
 import { log } from '../log.js';
 
 export type BuildResult = 'SUCCESS' | 'FAILURE' | 'UNSTABLE' | 'ABORTED' | 'RUNNING';
@@ -30,7 +31,11 @@ export interface MyBuildDiagnosis {
   commitAuthors: string[];
 }
 
-export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuildDiagnosis {
+export function diagnoseMyBuild(
+  build: JenkinsBuild,
+  identity: Identity,
+  branchAuthorEmail?: string,
+): MyBuildDiagnosis {
   const username = identity.username.toLowerCase();
   const emails = new Set(identity.emails.map((e) => e.toLowerCase()));
   const userTokens = new Set<string>([username, ...emails]);
@@ -106,6 +111,15 @@ export function diagnoseMyBuild(build: JenkinsBuild, identity: Identity): MyBuil
     };
   }
 
+  if (branchAuthorEmail && emails.has(branchAuthorEmail.toLowerCase())) {
+    return {
+      match: true,
+      reason: `bitbucket branch author=${branchAuthorEmail}`,
+      causes: causeStrings,
+      commitAuthors,
+    };
+  }
+
   return { match: false, reason: 'no identity signal', causes: causeStrings, commitAuthors };
 }
 
@@ -157,6 +171,40 @@ export function jobApiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${segments.join('/')}/api/json`;
 }
 
+async function enrichWithBitbucketBranchAuthors(
+  parsed: JenkinsJobResponse,
+  matches: BranchBuild[],
+  bitbucketRepo: string,
+  config: Config,
+): Promise<void> {
+  const branches = parsed.jobs ?? [];
+  if (branches.length === 0) return;
+
+  const matchedNames = new Set(matches.map((m) => m.branch));
+  for (const branch of branches) {
+    if (matchedNames.has(branch.name)) continue;
+    const builds = branch.builds ?? [];
+    if (builds.length === 0) continue;
+
+    const author = await fetchLatestBranchAuthorEmail(config, bitbucketRepo, branch.name);
+    if (!author) continue;
+
+    const topBuild = builds[0];
+    const diagnosis = diagnoseMyBuild(topBuild, config.identity, author);
+    if (!diagnosis.match) continue;
+
+    log.debug(
+      { branch: branch.name, author, build: topBuild.number },
+      `jenkins: bitbucket fallback matched branch '${branch.name}'`,
+    );
+    matches.push({
+      branch: branch.name,
+      build: topBuild,
+      recent: builds.slice(0, 5).map((b) => (b.result ?? 'RUNNING') as BuildResult),
+    });
+  }
+}
+
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
   const cfg = config.sources.jenkins;
   if (!cfg) {
@@ -191,6 +239,14 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
       logSelection(jobConfig.path, jobConfig.my_builds_only, parsed, config.identity);
 
       const matches = selectBuilds(parsed, config.identity, jobConfig.my_builds_only);
+      if (jobConfig.my_builds_only && jobConfig.bitbucket_repo) {
+        await enrichWithBitbucketBranchAuthors(
+          parsed,
+          matches,
+          jobConfig.bitbucket_repo,
+          config,
+        );
+      }
       const maxAgeMs = (config.settings.max_build_age_hours ?? 0) * 3600 * 1000;
       const cutoff = maxAgeMs > 0 ? Date.now() - maxAgeMs : null;
       for (const { branch, build, recent } of matches) {
