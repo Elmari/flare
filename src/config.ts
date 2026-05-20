@@ -52,6 +52,11 @@ export const ConfigSchema = z.object({
     // Hide Jenkins rows whose latest matching build is older than this
     // many hours. 0 disables the filter. Default: 7 days.
     max_build_age_hours: z.number().int().min(0).default(168),
+    // How many recent builds per Jenkins branch to fetch and scan for a
+    // matching "my build". The trend strip in the dashboard still shows
+    // at most 5. Bump this if my_builds_only is true and you have a busy
+    // branch where your build is older than the top 5.
+    recent_builds_count: z.number().int().min(1).max(50).default(5),
   }),
 });
 
@@ -115,6 +120,7 @@ settings:
   notify_on_review_requested: true
   notification_timeout_seconds: 10           # macOS: nur wirksam, wenn 'Banner'-Stil aktiv (System Settings → Notifications)
   max_build_age_hours: 168                   # hide Jenkins rows whose latest "my" build is older than this (0 = no limit)
+  recent_builds_count: 5                     # how many recent Jenkins builds per branch to scan for a "my build" match (1-50)
 
 # Optional: enable on-demand AI analysis ('a' in the dashboard).
 # Calls a Gemini generateContent endpoint (Vertex AI, the corporate

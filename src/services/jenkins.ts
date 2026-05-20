@@ -144,10 +144,18 @@ export function selectBuilds(
   return result;
 }
 
-const BUILD_FIELDS =
+export const BUILD_FIELDS =
   'number,url,result,timestamp,actions[causes[userId,userName,shortDescription]],' +
   'changeSet[items[authorEmail,timestamp]],changeSets[items[authorEmail,timestamp]]';
-const TREE_QUERY = `builds[${BUILD_FIELDS}]{0,5},jobs[name,url,builds[${BUILD_FIELDS}]{0,5}]{0,50}`;
+
+export function buildTreeQuery(recentBuildsCount: number): string {
+  return `builds[${BUILD_FIELDS}]{0,${recentBuildsCount}},jobs[name,url,builds[${BUILD_FIELDS}]{0,${recentBuildsCount}}]{0,50}`;
+}
+
+export function jobApiUrl(baseUrl: string, path: string): string {
+  const segments = path.split('/').filter(Boolean).map((s) => `job/${encodeURIComponent(s)}`);
+  return `${baseUrl.replace(/\/$/, '')}/${segments.join('/')}/api/json`;
+}
 
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
   const cfg = config.sources.jenkins;
@@ -167,6 +175,7 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
   const apiToken = readEnvSecret(cfg.api_token_env);
   const headers = { ...basic(cfg.username, apiToken), accept: 'application/json' };
   const statuses: JenkinsStatus[] = [];
+  const treeQuery = buildTreeQuery(config.settings.recent_builds_count);
 
   log.debug(
     { baseUrl: cfg.base_url, jobCount: cfg.jobs.length },
@@ -176,7 +185,7 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
   for (const jobConfig of cfg.jobs) {
     try {
       const jobUrl = jobApiUrl(cfg.base_url, jobConfig.path);
-      const data = await request<unknown>(jobUrl, { headers, query: { tree: TREE_QUERY } });
+      const data = await request<unknown>(jobUrl, { headers, query: { tree: treeQuery } });
       const parsed = JenkinsJobResponseSchema.parse(data);
 
       logSelection(jobConfig.path, jobConfig.my_builds_only, parsed, config.identity);
@@ -252,11 +261,6 @@ function logSelection(
     },
     `jenkins: scanned ${path}`,
   );
-}
-
-function jobApiUrl(baseUrl: string, path: string): string {
-  const segments = path.split('/').filter(Boolean).map((s) => `job/${encodeURIComponent(s)}`);
-  return `${baseUrl.replace(/\/$/, '')}/${segments.join('/')}/api/json`;
 }
 
 export interface BuildLog {
