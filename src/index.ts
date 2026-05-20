@@ -45,6 +45,24 @@ program
     }
   });
 
+const debug = program.command('debug').description('Diagnose data fetching for a source');
+
+debug
+  .command('jenkins <job-path>')
+  .description('Show how flare interprets a Jenkins job (selection, identity match, age cutoff)')
+  .action(async (jobPath: string) => {
+    try {
+      const { loadConfig } = await import('./config.js');
+      const { diagnoseJenkinsJob } = await import('./diagnose.js');
+      const config = loadConfig();
+      const out = await diagnoseJenkinsJob(config, jobPath);
+      console.log(out);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
 program
   .command('watch')
   .description('Start the background watcher manually')
