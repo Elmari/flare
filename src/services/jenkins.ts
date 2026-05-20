@@ -186,15 +186,21 @@ async function enrichWithBitbucketBranchAuthors(
     const builds = branch.builds ?? [];
     if (builds.length === 0) continue;
 
-    const author = await fetchLatestBranchAuthorEmail(config, bitbucketRepo, branch.name);
-    if (!author) continue;
+    const lookup = await fetchLatestBranchAuthorEmail(config, bitbucketRepo, branch.name);
+    if (!lookup.email) {
+      log.debug(
+        { branch: branch.name, reason: lookup.reason },
+        `jenkins: bitbucket fallback for '${branch.name}' returned no author`,
+      );
+      continue;
+    }
 
     const topBuild = builds[0];
-    const diagnosis = diagnoseMyBuild(topBuild, config.identity, author);
+    const diagnosis = diagnoseMyBuild(topBuild, config.identity, lookup.email);
     if (!diagnosis.match) continue;
 
     log.debug(
-      { branch: branch.name, author, build: topBuild.number },
+      { branch: branch.name, author: lookup.email, build: topBuild.number },
       `jenkins: bitbucket fallback matched branch '${branch.name}'`,
     );
     matches.push({

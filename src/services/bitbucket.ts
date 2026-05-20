@@ -69,60 +69,88 @@ export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStat
   return Array.from(new Map(prs.map(p => [p.id, p])).values());
 }
 
+export interface BranchAuthorLookup {
+  email?: string;
+  reason: string;
+}
+
 export async function fetchLatestBranchAuthorEmail(
   config: Config,
   repo: string,
   branchName: string,
-): Promise<string | undefined> {
+): Promise<BranchAuthorLookup> {
   const cfg = config.sources.bitbucket;
-  if (!cfg || !cfg.enabled) return undefined;
+  if (!cfg) return { reason: 'sources.bitbucket not configured' };
+  if (!cfg.enabled) return { reason: 'sources.bitbucket.enabled=false' };
 
   const [projectKey, slug] = repo.split('/');
   if (!projectKey || !slug) {
-    log.warn({ repo }, 'bitbucket: invalid repo identifier for branch author lookup (expected "PROJECT/slug")');
-    return undefined;
+    return { reason: `invalid bitbucket_repo '${repo}' (expected "PROJECT/slug")` };
   }
 
   const pat = readEnvSecret(cfg.pat_env);
   const headers = { ...bearer(pat), accept: 'application/json' };
   const repoBase = `${cfg.base_url.replace(/\/$/, '')}/rest/api/1.0/projects/${encodeURIComponent(projectKey)}/repos/${encodeURIComponent(slug)}`;
 
-  // Bitbucket Server's /commits?until= endpoint resolves the value as a
-  // commit hash first and 404s for branch names that contain slashes
-  // (e.g. 'feature/PROJ-1234') even with a 'refs/heads/' prefix. Two-step
-  // lookup is reliable: find the branch to get its latest commit hash,
-  // then fetch that commit by ID.
-  const displayName = branchName.startsWith('refs/heads/')
-    ? branchName.slice('refs/heads/'.length)
-    : branchName;
-
+  // Jenkins sometimes reports branch.name URL-encoded (feature%2Ffoo); the
+  // Bitbucket filterText is plain text, so decode first. Also strip a
+  // refs/heads/ prefix if a caller passed the full ref form.
+  let displayName: string;
   try {
-    const branchData = await request<{
-      values?: Array<{ displayId?: string; id?: string; latestCommit?: string }>;
-    }>(`${repoBase}/branches`, {
+    displayName = decodeURIComponent(branchName);
+  } catch {
+    displayName = branchName;
+  }
+  if (displayName.startsWith('refs/heads/')) {
+    displayName = displayName.slice('refs/heads/'.length);
+  }
+
+  let branchData: { values?: Array<{ displayId?: string; id?: string; latestCommit?: string }> };
+  try {
+    branchData = await request(`${repoBase}/branches`, {
       headers,
       query: { filterText: displayName, limit: 25 },
     });
-    const branch = branchData.values?.find(
-      (b) => b.displayId === displayName || b.id === `refs/heads/${displayName}`,
-    );
-    if (!branch?.latestCommit) {
-      log.debug({ repo, branchName }, 'bitbucket: branch not found via filterText lookup');
-      return undefined;
-    }
+  } catch (err) {
+    return { reason: `/branches request failed: ${(err as Error).message}` };
+  }
 
-    const commit = await request<{ author?: { emailAddress?: string } }>(
-      `${repoBase}/commits/${encodeURIComponent(branch.latestCommit)}`,
+  const matches = branchData.values ?? [];
+  if (matches.length === 0) {
+    return { reason: `/branches?filterText=${displayName} returned 0 results` };
+  }
+  const exact = matches.find(
+    (b) =>
+      b.displayId?.toLowerCase() === displayName.toLowerCase() ||
+      b.id === `refs/heads/${displayName}`,
+  );
+  if (!exact) {
+    const sample = matches
+      .map((b) => b.displayId ?? b.id ?? '?')
+      .slice(0, 5)
+      .join(', ');
+    return {
+      reason: `/branches matched ${matches.length} branch(es) but none had displayId='${displayName}' (saw: ${sample})`,
+    };
+  }
+  if (!exact.latestCommit) {
+    return { reason: `branch '${displayName}' found but Bitbucket returned no latestCommit hash` };
+  }
+
+  let commit: { author?: { emailAddress?: string } };
+  try {
+    commit = await request(
+      `${repoBase}/commits/${encodeURIComponent(exact.latestCommit)}`,
       { headers },
     );
-    return commit.author?.emailAddress;
   } catch (err) {
-    log.warn(
-      { repo, branchName, err: (err as Error).message },
-      'bitbucket: latest branch author lookup failed',
-    );
-    return undefined;
+    return { reason: `/commits/${exact.latestCommit} failed: ${(err as Error).message}` };
   }
+  const email = commit.author?.emailAddress;
+  if (!email) {
+    return { reason: `commit ${exact.latestCommit} has no author.emailAddress` };
+  }
+  return { email, reason: `latestCommit=${exact.latestCommit.slice(0, 8)} author=${email}` };
 }
 
 export interface PRDiff {

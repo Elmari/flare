@@ -107,14 +107,13 @@ export async function diagnoseJenkinsJob(
       const jenkinsOnlyMatch = builds.some((b) => diagnoseMyBuild(b, config.identity).match);
       let branchAuthor: string | undefined;
       if (!jenkinsOnlyMatch && jobConfig.bitbucket_repo) {
-        branchAuthor = await fetchLatestBranchAuthorEmail(
+        const lookup = await fetchLatestBranchAuthorEmail(
           config,
           jobConfig.bitbucket_repo,
           branch.name,
         );
-        lines.push(
-          `  bitbucket fallback: latest author = ${branchAuthor ?? '(none / lookup failed)'}`,
-        );
+        branchAuthor = lookup.email;
+        lines.push(`  bitbucket fallback: ${lookup.reason}`);
       }
       formatBuilds(lines, builds, config.identity, jobConfig.my_builds_only, cutoff, branchAuthor);
       lines.push('');
