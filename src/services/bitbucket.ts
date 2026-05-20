@@ -85,22 +85,40 @@ export async function fetchLatestBranchAuthorEmail(
 
   const pat = readEnvSecret(cfg.pat_env);
   const headers = { ...bearer(pat), accept: 'application/json' };
-  const url = `${cfg.base_url.replace(/\/$/, '')}/rest/api/1.0/projects/${encodeURIComponent(projectKey)}/repos/${encodeURIComponent(slug)}/commits`;
+  const repoBase = `${cfg.base_url.replace(/\/$/, '')}/rest/api/1.0/projects/${encodeURIComponent(projectKey)}/repos/${encodeURIComponent(slug)}`;
 
-  // Pass the full ref. With just the bare branch name, Bitbucket Server
-  // tries to resolve it as a commit hash first and 404s for branches that
-  // contain slashes (e.g. 'feature/PROJ-1234').
-  const ref = branchName.startsWith('refs/') ? branchName : `refs/heads/${branchName}`;
+  // Bitbucket Server's /commits?until= endpoint resolves the value as a
+  // commit hash first and 404s for branch names that contain slashes
+  // (e.g. 'feature/PROJ-1234') even with a 'refs/heads/' prefix. Two-step
+  // lookup is reliable: find the branch to get its latest commit hash,
+  // then fetch that commit by ID.
+  const displayName = branchName.startsWith('refs/heads/')
+    ? branchName.slice('refs/heads/'.length)
+    : branchName;
 
   try {
-    const data = await request<{ values?: Array<{ author?: { emailAddress?: string } }> }>(url, {
+    const branchData = await request<{
+      values?: Array<{ displayId?: string; id?: string; latestCommit?: string }>;
+    }>(`${repoBase}/branches`, {
       headers,
-      query: { until: ref, limit: 1 },
+      query: { filterText: displayName, limit: 25 },
     });
-    return data.values?.[0]?.author?.emailAddress;
+    const branch = branchData.values?.find(
+      (b) => b.displayId === displayName || b.id === `refs/heads/${displayName}`,
+    );
+    if (!branch?.latestCommit) {
+      log.debug({ repo, branchName }, 'bitbucket: branch not found via filterText lookup');
+      return undefined;
+    }
+
+    const commit = await request<{ author?: { emailAddress?: string } }>(
+      `${repoBase}/commits/${encodeURIComponent(branch.latestCommit)}`,
+      { headers },
+    );
+    return commit.author?.emailAddress;
   } catch (err) {
     log.warn(
-      { repo, branchName, ref, err: (err as Error).message },
+      { repo, branchName, err: (err as Error).message },
       'bitbucket: latest branch author lookup failed',
     );
     return undefined;
