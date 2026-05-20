@@ -27,7 +27,7 @@ interface JenkinsBuildState {
 }
 type JenkinsState = Record<string, JenkinsBuildState>;
 
-export type JenkinsTransition = 'failed' | 'fixed' | 'passed' | 'none';
+export type JenkinsTransition = 'failed' | 'unstable' | 'fixed' | 'passed' | 'none';
 
 export function classifyJenkinsTransition(
   prev: JenkinsBuildState | undefined,
@@ -39,6 +39,7 @@ export function classifyJenkinsTransition(
   if (!isNewBuild && !resultChanged) return 'none';
 
   if (current.result === 'FAILURE') return 'failed';
+  if (current.result === 'UNSTABLE') return 'unstable';
   if (current.result === 'SUCCESS') {
     const lastFinal = prev.lastFinalResult ?? prev.result;
     return lastFinal === 'FAILURE' || lastFinal === 'UNSTABLE' ? 'fixed' : 'passed';
@@ -137,6 +138,12 @@ async function pollJenkins(
       const key = `build:${s.job}:${s.number}:FAILURE`;
       if (shouldNotify(key, notified, now)) {
         notify('Build Failed 🚨', `${s.job} #${s.number} failed.`);
+        markNotified(key, notified, now);
+      }
+    } else if (transition === 'unstable') {
+      const key = `build:${s.job}:${s.number}:UNSTABLE`;
+      if (shouldNotify(key, notified, now)) {
+        notify('Build Unstable ⚠️', `${s.job} #${s.number} is unstable.`);
         markNotified(key, notified, now);
       }
     } else if (transition === 'fixed') {

@@ -274,9 +274,11 @@ const Dashboard: React.FC<Props> = ({ config }) => {
   }
 
   const failingBuilds = jenkins.filter((s) => s.result === 'FAILURE').length;
+  const unstableBuilds = jenkins.filter((s) => s.result === 'UNSTABLE').length;
   const needsWorkPRs = prs.filter((p) => p.approvalStatus === 'NEEDS_WORK').length;
   const summaryParts: { text: string; color: string }[] = [];
   if (failingBuilds > 0) summaryParts.push({ text: `${failingBuilds} failing builds`, color: 'red' });
+  if (unstableBuilds > 0) summaryParts.push({ text: `${unstableBuilds} unstable builds`, color: 'yellow' });
   if (needsWorkPRs > 0) summaryParts.push({ text: `${needsWorkPRs} PRs need work`, color: 'yellow' });
   const allClear = !error && summaryParts.length === 0;
 

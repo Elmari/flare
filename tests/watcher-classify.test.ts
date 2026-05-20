@@ -50,6 +50,28 @@ test('classify: FAILURE -> RUNNING -> SUCCESS still detects fixed via lastFinalR
   );
 });
 
+test('classify: new build UNSTABLE -> unstable', () => {
+  assert.equal(
+    classifyJenkinsTransition(
+      { number: 5, result: 'SUCCESS', lastFinalResult: 'SUCCESS' },
+      { number: 6, result: 'UNSTABLE' },
+    ),
+    'unstable',
+  );
+});
+
+test('classify: FAILURE -> UNSTABLE (new build) -> unstable, not failed', () => {
+  // A red build that turns yellow on the next run is still a yellow build,
+  // not a fresh failure — we want the yellow notification, not the red one.
+  assert.equal(
+    classifyJenkinsTransition(
+      { number: 5, result: 'FAILURE', lastFinalResult: 'FAILURE' },
+      { number: 6, result: 'UNSTABLE' },
+    ),
+    'unstable',
+  );
+});
+
 test('classify: UNSTABLE -> SUCCESS -> fixed', () => {
   assert.equal(
     classifyJenkinsTransition(
