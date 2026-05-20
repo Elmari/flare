@@ -14,6 +14,9 @@ export interface BitbucketPRStatus {
   author: string;
   iAmAuthor: boolean;
   approvalStatus: 'APPROVED' | 'NEEDS_WORK' | 'UNAPPROVED';
+  // Source branch (fromRef.displayId). Optional because older Bitbucket
+  // servers and some edge-case PRs may not expose it.
+  branch?: string;
 }
 
 export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStatus[]> {
@@ -58,6 +61,7 @@ export async function fetchBitbucketPRs(config: Config): Promise<BitbucketPRStat
           author: val.author.user.displayName || val.author.user.name,
           iAmAuthor: authorSlug === config.identity.username.toLowerCase(),
           approvalStatus: myStatus || 'UNAPPROVED',
+          branch: val.fromRef?.displayId,
         });
       }
     } catch (err) {

@@ -15,6 +15,9 @@ export const BitbucketPRSchema = z.object({
       slug: z.string(),
     }),
   }),
+  fromRef: z.object({
+    displayId: z.string(),
+  }).optional(),
   toRef: z.object({
     repository: z.object({
       slug: z.string(),
