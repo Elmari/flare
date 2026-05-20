@@ -30,6 +30,7 @@ cp .env.example .env # fill in your tokens
 
 - `flare watch`: starts the background watcher.
 - `flare status`: opens the interactive dashboard in the terminal (fullscreen via the alt-screen buffer; pressing `q` brings your previous terminal contents back unchanged). Use `flare status --no-fullscreen` to render inline if you want to copy output or keep it in scrollback.
+- `flare debug jenkins <job-path>`: prints a human-readable diagnosis for a configured Jenkins job — identity config, age cutoff, scan window, and per-build match status (reason, causes, commit authors) with a marker showing which build would be selected. Use this when a build is missing from the dashboard and you don't know why.
 - `flare install-agent` (macOS): registers a LaunchAgent that starts `flare watch` on login and keeps it alive in the background. Logs go to `~/Library/Logs/flare/watcher.{out,err}.log`.
 - `flare reload-agent` (macOS): restarts the LaunchAgent — needed after `npm run build` so the running watcher picks up the new code.
 - `flare uninstall-agent` (macOS): unloads the LaunchAgent and removes the plist.
@@ -67,6 +68,7 @@ sources:
         my_builds_only: true
       - path: team-x/api-multibranch      # multibranch project — every branch with your commits is watched automatically
         my_builds_only: true
+        bitbucket_repo: TEAMX/api-multibranch   # optional: enables the Bitbucket fallback (see "Identity matching")
 
   bitbucket:
     base_url: https://bitbucket.firma.de
@@ -84,23 +86,26 @@ settings:
   notify_on_review_requested: true         # ping when you're newly added as reviewer
   notification_timeout_seconds: 10         # how long a toast stays visible (1–60s)
   max_build_age_hours: 168                 # hide Jenkins rows whose latest "my" build is older than this (0 = no limit)
+  recent_builds_count: 5                   # how many recent builds per Jenkins branch to scan for a "my build" match (1–50)
 ```
 
 ### Identity matching for Jenkins builds
 
-A build is treated as *yours* when:
+A build is treated as *yours* when **any** of these match:
 
-- the trigger cause names you (`userId`, `userName`, or `shortDescription` containing your username/email — e.g. `Aborted by U153618`), **or**
-- the **latest commit** in the build's changeset was authored by one of your `identity.emails`.
+1. The trigger cause names you (`userId`, `userName`, or `shortDescription` containing your username/email — e.g. `Aborted by U153618`).
+2. The **latest commit** in the build's changeset was authored by one of your `identity.emails`. The "latest commit" rule (rather than "any commit") avoids false positives when Jenkins drops historical commits into a new branch's first build — for example renovate / dependabot branches that were forked from a base branch carrying your earlier commits. flare reads both the legacy `changeSet` (Freestyle) and the modern `changeSets[]` (Pipeline) shapes.
+3. **Bitbucket fallback** (opt-in): if rules 1 and 2 fail *and* the Jenkins job has `bitbucket_repo: PROJECT/slug` set, flare asks Bitbucket who last committed on the branch and treats the build as yours if that author is in `identity.emails`. This fixes the common case where Jenkins delivers an empty `changeSet` for **initial branch-indexing builds** — without the fallback, freshly created branches would silently disappear from the dashboard.
 
-The "latest commit" rule (rather than "any commit") avoids false positives when Jenkins drops historical commits into a new branch's first build — for example renovate / dependabot branches that were forked from a base branch carrying your earlier commits. flare reads both the legacy `changeSet` (Freestyle) and the modern `changeSets[]` (Pipeline) shapes.
+If a build is missing, run `flare debug jenkins <job-path>` — it prints exactly which builds were scanned, why each one matched or didn't (cause analysis, commit authors, and the Bitbucket fallback result when applicable), and which build would be selected.
 
 ## Notification matrix
 
 | Event                                      | Notification          | Default | Override                       |
 | ------------------------------------------ | --------------------- | ------- | ------------------------------ |
 | Build transitions to `FAILURE`             | Build Failed 🚨       | on      | —                              |
-| Build goes from `FAILURE` → `SUCCESS`      | Build Fixed ✅        | on      | —                              |
+| Build transitions to `UNSTABLE`            | Build Unstable ⚠️     | on      | —                              |
+| Build goes from `FAILURE`/`UNSTABLE` → `SUCCESS` | Build Fixed ✅  | on      | —                              |
 | Build transitions to `SUCCESS` (general)   | Build Passed ✅       | off     | `notify_on_build_success`      |
 | PR status changes to `NEEDS_WORK`          | Changes Requested ⚠️   | on      | —                              |
 | PR status changes to `APPROVED`            | PR Approved ✅        | on      | —                              |
