@@ -30,7 +30,7 @@ cp .env.example .env # fill in your tokens
 
 - `flare watch`: starts the background watcher.
 - `flare status`: opens the interactive dashboard in the terminal (fullscreen via the alt-screen buffer; pressing `q` brings your previous terminal contents back unchanged). Use `flare status --no-fullscreen` to render inline if you want to copy output or keep it in scrollback.
-- `flare debug jenkins <job-path>`: prints a human-readable diagnosis for a configured Jenkins job — identity config, age cutoff, scan window, and per-build match status (reason, causes, commit authors) with a marker showing which build would be selected. Use this when a build is missing from the dashboard and you don't know why.
+- `flare debug jenkins <job-path> [branch-filter]`: prints a human-readable diagnosis for a configured Jenkins job — identity config, age cutoff, scan window, and per-build match status (reason, causes, commit authors) with a marker showing which build would be selected. Pass an optional case-insensitive substring as a second argument to narrow the output to matching branches in a multibranch job. Use this when a build is missing from the dashboard and you don't know why.
 - `flare install-agent` (macOS): registers a LaunchAgent that starts `flare watch` on login and keeps it alive in the background. Logs go to `~/Library/Logs/flare/watcher.{out,err}.log`.
 - `flare reload-agent` (macOS): restarts the LaunchAgent — needed after `npm run build` so the running watcher picks up the new code.
 - `flare uninstall-agent` (macOS): unloads the LaunchAgent and removes the plist.

@@ -48,14 +48,17 @@ program
 const debug = program.command('debug').description('Diagnose data fetching for a source');
 
 debug
-  .command('jenkins <job-path>')
-  .description('Show how flare interprets a Jenkins job (selection, identity match, age cutoff)')
-  .action(async (jobPath: string) => {
+  .command('jenkins <job-path> [branch-filter]')
+  .description(
+    'Show how flare interprets a Jenkins job (selection, identity match, age cutoff). ' +
+      'For multibranch jobs you can pass a case-insensitive substring to only show matching branches.',
+  )
+  .action(async (jobPath: string, branchFilter: string | undefined) => {
     try {
       const { loadConfig } = await import('./config.js');
       const { diagnoseJenkinsJob } = await import('./diagnose.js');
       const config = loadConfig();
-      const out = await diagnoseJenkinsJob(config, jobPath);
+      const out = await diagnoseJenkinsJob(config, jobPath, branchFilter);
       console.log(out);
     } catch (err) {
       console.error((err as Error).message);

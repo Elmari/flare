@@ -16,7 +16,11 @@ import { fetchLatestBranchAuthorEmail } from './services/bitbucket.js';
 const DEBUG_SCAN_COUNT = 30;
 const DEBUG_TREE_QUERY = `builds[${BUILD_FIELDS}]{0,${DEBUG_SCAN_COUNT}},jobs[name,url,builds[${BUILD_FIELDS}]{0,${DEBUG_SCAN_COUNT}}]{0,50}`;
 
-export async function diagnoseJenkinsJob(config: Config, jobPath: string): Promise<string> {
+export async function diagnoseJenkinsJob(
+  config: Config,
+  jobPath: string,
+  branchFilter?: string,
+): Promise<string> {
   const cfg = config.sources.jenkins;
   if (!cfg) return 'Jenkins source not configured (sources.jenkins missing).';
   if (!cfg.enabled) return 'Jenkins source disabled (sources.jenkins.enabled = false).';
@@ -59,16 +63,36 @@ export async function diagnoseJenkinsJob(config: Config, jobPath: string): Promi
   lines.push(
     `Bitbucket repo:  ${jobConfig.bitbucket_repo ?? '(not set — fallback disabled)'}`,
   );
+  if (branchFilter) {
+    lines.push(`Branch filter:   '${branchFilter}' (case-insensitive substring)`);
+  }
   lines.push('');
 
   if (parsed.builds && parsed.builds.length > 0) {
+    if (branchFilter) {
+      lines.push('Note: this is a leaf job (no branches) — branch filter ignored.');
+      lines.push('');
+    }
     lines.push(`Shape: leaf job, ${parsed.builds.length} builds returned`);
     lines.push('');
     formatBuilds(lines, parsed.builds, config.identity, jobConfig.my_builds_only, cutoff, undefined);
   } else {
-    const branches = parsed.jobs ?? [];
-    lines.push(`Shape: multibranch, ${branches.length} branches returned (Jenkins caps at 50)`);
+    const allBranches = parsed.jobs ?? [];
+    const branches = branchFilter
+      ? allBranches.filter((b) => b.name.toLowerCase().includes(branchFilter.toLowerCase()))
+      : allBranches;
+    lines.push(
+      `Shape: multibranch, ${allBranches.length} branches returned (Jenkins caps at 50)` +
+        (branchFilter ? `, ${branches.length} match the filter` : ''),
+    );
     lines.push('');
+    if (branchFilter && branches.length === 0) {
+      lines.push(`No branch name contains '${branchFilter}'. Branches available:`);
+      for (const b of allBranches) {
+        lines.push(`  - ${b.name}`);
+      }
+      return lines.join('\n');
+    }
     for (const branch of branches) {
       const builds = branch.builds ?? [];
       lines.push(`--- Branch: ${branch.name}  (${builds.length} builds) ---`);
