@@ -432,6 +432,12 @@ const PRSummaryView: React.FC<{ data: PRSummaryResponse }> = ({ data }) => (
         {data.key_files.map((f) => <Text key={f}>· {f}</Text>)}
       </>
     )}
+    {data.assessment && (
+      <>
+        <Box marginTop={1}><Text bold color="yellow">Assessment</Text></Box>
+        <Text>{data.assessment}</Text>
+      </>
+    )}
     {data.review_focus && (
       <>
         <Box marginTop={1}><Text bold color="yellow">Review focus</Text></Box>

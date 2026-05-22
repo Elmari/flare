@@ -14,6 +14,7 @@ export type AnalysisResponse = z.infer<typeof AnalysisResponseSchema>;
 export const PRSummaryResponseSchema = z.object({
   summary: z.string(),
   key_files: z.array(z.string()).optional(),
+  assessment: z.string().optional(),
   review_focus: z.string().optional(),
 });
 export type PRSummaryResponse = z.infer<typeof PRSummaryResponseSchema>;
@@ -121,6 +122,7 @@ Respond with a JSON object matching this shape:
 {
   "summary": "two or three sentences describing what changed and why it likely matters",
   "key_files": ["file/paths/that/carry/the/main/change"],
+  "assessment": "what your opinion / assessment / review is of this changes. Focus solely on the code changes you see",
   "review_focus": "what a human reviewer should pay attention to (correctness risk, missing tests, etc.); omit if nothing stands out"
 }
 Respond with JSON only. No prose, no code fences.`;
