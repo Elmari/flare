@@ -290,17 +290,16 @@ async function reclassifyRecent(
   recentBuilds: JenkinsBuild[],
   recentResults: BuildResult[],
 ): Promise<BuildResult[]> {
-  const out: BuildResult[] = [];
-  for (let i = 0; i < recentResults.length; i++) {
-    const r = recentResults[i];
-    const b = recentBuilds[i];
-    if (r === 'FAILURE' && b) {
-      out.push(await reclassifyIfFailure(config, b.url, r));
-    } else {
-      out.push(r);
-    }
-  }
-  return out;
+  // Each entry in recent is independent — fan out the wfapi calls in parallel
+  // so a job with several FAILURE entries in its trend doesn't serialize 5+
+  // network round-trips on every poll.
+  return Promise.all(
+    recentResults.map((r, i) => {
+      const b = recentBuilds[i];
+      if (r === 'FAILURE' && b) return reclassifyIfFailure(config, b.url, r);
+      return Promise.resolve(r);
+    }),
+  );
 }
 
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
@@ -320,52 +319,69 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
 
   const apiToken = readEnvSecret(cfg.api_token_env);
   const headers = { ...basic(cfg.username, apiToken), accept: 'application/json' };
-  const statuses: JenkinsStatus[] = [];
   const treeQuery = buildTreeQuery(config.settings.recent_builds_count);
+  const maxAgeMs = (config.settings.max_build_age_hours ?? 0) * 3600 * 1000;
+  const cutoff = maxAgeMs > 0 ? Date.now() - maxAgeMs : null;
 
   log.debug(
     { baseUrl: cfg.base_url, jobCount: cfg.jobs.length },
     `jenkins: starting fetch for ${cfg.jobs.length} job(s)`,
   );
 
-  for (const jobConfig of cfg.jobs) {
-    try {
-      const jobUrl = jobApiUrl(cfg.base_url, jobConfig.path);
-      const data = await request<unknown>(jobUrl, { headers, query: { tree: treeQuery } });
-      const parsed = JenkinsJobResponseSchema.parse(data);
+  // Jobs are independent — fan out the per-job fetches in parallel. A single
+  // job's failure stays isolated to its own catch and doesn't block the rest.
+  const perJob = await Promise.all(
+    cfg.jobs.map(async (jobConfig): Promise<JenkinsStatus[]> => {
+      try {
+        const jobUrl = jobApiUrl(cfg.base_url, jobConfig.path);
+        const data = await request<unknown>(jobUrl, { headers, query: { tree: treeQuery } });
+        const parsed = JenkinsJobResponseSchema.parse(data);
 
-      logSelection(jobConfig.path, jobConfig.my_builds_only, parsed, config.identity);
+        logSelection(jobConfig.path, jobConfig.my_builds_only, parsed, config.identity);
 
-      const matches = selectBuilds(parsed, config.identity, jobConfig.my_builds_only);
-      if (jobConfig.my_builds_only && jobConfig.bitbucket_repo) {
-        await enrichWithBitbucketBranchAuthors(
-          parsed,
-          matches,
-          jobConfig.bitbucket_repo,
-          config,
+        const matches = selectBuilds(parsed, config.identity, jobConfig.my_builds_only);
+        if (jobConfig.my_builds_only && jobConfig.bitbucket_repo) {
+          await enrichWithBitbucketBranchAuthors(
+            parsed,
+            matches,
+            jobConfig.bitbucket_repo,
+            config,
+          );
+        }
+
+        const eligible = matches.filter(
+          (m) => cutoff === null || m.build.timestamp >= cutoff,
         );
-      }
-      const maxAgeMs = (config.settings.max_build_age_hours ?? 0) * 3600 * 1000;
-      const cutoff = maxAgeMs > 0 ? Date.now() - maxAgeMs : null;
-      for (const { branch, build, recent, recentBuilds } of matches) {
-        if (cutoff !== null && build.timestamp < cutoff) continue;
-        const rawResult = (build.result ?? 'RUNNING') as BuildResult;
-        const reclassifiedResult = await reclassifyIfFailure(config, build.url, rawResult);
-        const reclassifiedRecent = await reclassifyRecent(config, recentBuilds, recent);
-        statuses.push({
-          job: branch ? `${jobConfig.path}/${branch}` : jobConfig.path,
-          number: build.number,
-          result: reclassifiedResult,
-          url: build.url,
-          recent: reclassifiedRecent,
-          timestamp: build.timestamp,
-        });
-      }
-    } catch (err) {
-      log.warn(err, `jenkins: job fetch failed for ${jobConfig.path}`);
-    }
-  }
 
+        // For each surviving match, run the wfapi reclassification of the
+        // current build and the trend concurrently. Across matches we also
+        // fan out, so a multibranch job with many red branches doesn't
+        // serialize.
+        return await Promise.all(
+          eligible.map(async ({ branch, build, recent, recentBuilds }) => {
+            const rawResult = (build.result ?? 'RUNNING') as BuildResult;
+            const [reclassifiedResult, reclassifiedRecent] = await Promise.all([
+              reclassifyIfFailure(config, build.url, rawResult),
+              reclassifyRecent(config, recentBuilds, recent),
+            ]);
+            return {
+              job: branch ? `${jobConfig.path}/${branch}` : jobConfig.path,
+              number: build.number,
+              result: reclassifiedResult,
+              url: build.url,
+              recent: reclassifiedRecent,
+              timestamp: build.timestamp,
+            };
+          }),
+        );
+      } catch (err) {
+        log.warn(err, `jenkins: job fetch failed for ${jobConfig.path}`);
+        return [];
+      }
+    }),
+  );
+
+  const statuses = perJob.flat();
   statuses.sort((a, b) => b.timestamp - a.timestamp);
   return statuses;
 }
