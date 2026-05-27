@@ -3,8 +3,10 @@ import { readEnvSecret } from '../config.js';
 import type { Config } from '../config.js';
 import {
   JenkinsJobResponseSchema,
+  WorkflowRunSchema,
   type JenkinsBuild,
   type JenkinsJobResponse,
+  type WorkflowStage,
 } from './jenkins.schema.js';
 import { fetchLatestBranchAuthorEmail } from './bitbucket.js';
 import { log } from '../log.js';
@@ -132,6 +134,10 @@ export interface BranchBuild {
   branch: string;
   build: JenkinsBuild;
   recent: BuildResult[];
+  // The raw recent builds carry URLs we need later to fetch per-stage status
+  // via wfapi for failure reclassification. recent[] stays as the result list
+  // so existing consumers and tests are unaffected.
+  recentBuilds: JenkinsBuild[];
 }
 
 export function selectBuilds(
@@ -142,21 +148,76 @@ export function selectBuilds(
   const pickFrom = (builds: JenkinsBuild[]): JenkinsBuild | undefined =>
     myBuildsOnly ? builds.find((b) => isMyBuild(b, identity)) : builds[0];
 
+  const recentSliceFrom = (builds: JenkinsBuild[]): JenkinsBuild[] => builds.slice(0, 5);
   const recentFrom = (builds: JenkinsBuild[]): BuildResult[] =>
-    builds.slice(0, 5).map((b) => (b.result ?? 'RUNNING') as BuildResult);
+    recentSliceFrom(builds).map((b) => (b.result ?? 'RUNNING') as BuildResult);
 
   if (response.builds && response.builds.length > 0) {
     const match = pickFrom(response.builds);
-    return match ? [{ branch: '', build: match, recent: recentFrom(response.builds) }] : [];
+    return match
+      ? [{
+          branch: '',
+          build: match,
+          recent: recentFrom(response.builds),
+          recentBuilds: recentSliceFrom(response.builds),
+        }]
+      : [];
   }
 
   const result: BranchBuild[] = [];
   for (const branch of response.jobs ?? []) {
     const builds = branch.builds ?? [];
     const match = pickFrom(builds);
-    if (match) result.push({ branch: branch.name, build: match, recent: recentFrom(builds) });
+    if (match) {
+      result.push({
+        branch: branch.name,
+        build: match,
+        recent: recentFrom(builds),
+        recentBuilds: recentSliceFrom(builds),
+      });
+    }
   }
   return result;
+}
+
+// If Jenkins marks a build FAILURE but the only non-green stages are UNSTABLE
+// (i.e. nothing actually red), treat it as UNSTABLE. Mirrors how Jenkins'
+// build-result aggregation can over-promote a single unstable stage in some
+// pipeline setups. Non-FAILURE results, missing stage data, and builds with
+// any FAILED stage are passed through unchanged.
+export function reclassifyByStages(
+  result: BuildResult,
+  stages: WorkflowStage[] | null,
+): BuildResult {
+  if (result !== 'FAILURE') return result;
+  if (!stages || stages.length === 0) return result;
+  if (stages.some((s) => s.status === 'FAILED')) return result;
+  if (stages.some((s) => s.status === 'UNSTABLE')) return 'UNSTABLE';
+  return result;
+}
+
+export async function fetchBuildStages(
+  config: Config,
+  buildUrl: string,
+): Promise<WorkflowStage[] | null> {
+  const cfg = config.sources.jenkins;
+  if (!cfg || !cfg.enabled) return null;
+  const apiToken = readEnvSecret(cfg.api_token_env);
+  const headers = { ...basic(cfg.username, apiToken), accept: 'application/json' };
+  const url = `${buildUrl.replace(/\/$/, '')}/wfapi/describe`;
+  try {
+    const data = await request<unknown>(url, { headers });
+    const parsed = WorkflowRunSchema.parse(data);
+    return parsed.stages ?? [];
+  } catch (err) {
+    // wfapi is only exposed for Pipeline jobs (workflow-api-plugin). Freestyle
+    // jobs 404 here; that's expected — we just keep the original result.
+    log.debug(
+      { url, err: (err as Error).message },
+      'jenkins: wfapi/describe unavailable — skipping stage-based reclassification',
+    );
+    return null;
+  }
 }
 
 export const BUILD_FIELDS =
@@ -204,12 +265,42 @@ async function enrichWithBitbucketBranchAuthors(
       { branch: branch.name, author: lookup.email, build: topBuild.number },
       `jenkins: bitbucket fallback matched branch '${branch.name}'`,
     );
+    const recentSlice = builds.slice(0, 5);
     matches.push({
       branch: branch.name,
       build: topBuild,
-      recent: builds.slice(0, 5).map((b) => (b.result ?? 'RUNNING') as BuildResult),
+      recent: recentSlice.map((b) => (b.result ?? 'RUNNING') as BuildResult),
+      recentBuilds: recentSlice,
     });
   }
+}
+
+async function reclassifyIfFailure(
+  config: Config,
+  buildUrl: string,
+  result: BuildResult,
+): Promise<BuildResult> {
+  if (result !== 'FAILURE') return result;
+  const stages = await fetchBuildStages(config, buildUrl);
+  return reclassifyByStages(result, stages);
+}
+
+async function reclassifyRecent(
+  config: Config,
+  recentBuilds: JenkinsBuild[],
+  recentResults: BuildResult[],
+): Promise<BuildResult[]> {
+  const out: BuildResult[] = [];
+  for (let i = 0; i < recentResults.length; i++) {
+    const r = recentResults[i];
+    const b = recentBuilds[i];
+    if (r === 'FAILURE' && b) {
+      out.push(await reclassifyIfFailure(config, b.url, r));
+    } else {
+      out.push(r);
+    }
+  }
+  return out;
 }
 
 export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsStatus[]> {
@@ -256,14 +347,17 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
       }
       const maxAgeMs = (config.settings.max_build_age_hours ?? 0) * 3600 * 1000;
       const cutoff = maxAgeMs > 0 ? Date.now() - maxAgeMs : null;
-      for (const { branch, build, recent } of matches) {
+      for (const { branch, build, recent, recentBuilds } of matches) {
         if (cutoff !== null && build.timestamp < cutoff) continue;
+        const rawResult = (build.result ?? 'RUNNING') as BuildResult;
+        const reclassifiedResult = await reclassifyIfFailure(config, build.url, rawResult);
+        const reclassifiedRecent = await reclassifyRecent(config, recentBuilds, recent);
         statuses.push({
           job: branch ? `${jobConfig.path}/${branch}` : jobConfig.path,
           number: build.number,
-          result: (build.result ?? 'RUNNING') as BuildResult,
+          result: reclassifiedResult,
           url: build.url,
-          recent,
+          recent: reclassifiedRecent,
           timestamp: build.timestamp,
         });
       }

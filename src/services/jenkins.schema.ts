@@ -37,5 +37,31 @@ export const JenkinsJobResponseSchema = z.object({
   jobs: z.array(JenkinsBranchSchema).optional(),
 });
 
+// Status values returned by Jenkins workflow-api-plugin (wfapi/describe).
+// See: https://github.com/jenkinsci/workflow-api-plugin
+const WorkflowStageStatusSchema = z.enum([
+  'SUCCESS',
+  'FAILED',
+  'IN_PROGRESS',
+  'PAUSED_PENDING_INPUT',
+  'ABORTED',
+  'UNSTABLE',
+  'NOT_EXECUTED',
+  'QUEUED',
+  'SKIPPED',
+]);
+
+export const WorkflowStageSchema = z.object({
+  name: z.string().optional(),
+  status: WorkflowStageStatusSchema,
+});
+
+export const WorkflowRunSchema = z.object({
+  status: WorkflowStageStatusSchema.optional(),
+  stages: z.array(WorkflowStageSchema).optional(),
+});
+
 export type JenkinsBuild = z.infer<typeof JenkinsBuildSchema>;
 export type JenkinsJobResponse = z.infer<typeof JenkinsJobResponseSchema>;
+export type WorkflowStage = z.infer<typeof WorkflowStageSchema>;
+export type WorkflowRun = z.infer<typeof WorkflowRunSchema>;
