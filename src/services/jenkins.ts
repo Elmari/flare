@@ -17,6 +17,7 @@ export interface JenkinsStatus {
   result: BuildResult;
   url: string;
   recent: BuildResult[];
+  timestamp: number;
 }
 
 export interface Identity {
@@ -263,6 +264,7 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
           result: (build.result ?? 'RUNNING') as BuildResult,
           url: build.url,
           recent,
+          timestamp: build.timestamp,
         });
       }
     } catch (err) {
@@ -270,6 +272,7 @@ export async function fetchLatestJenkinsStatus(config: Config): Promise<JenkinsS
     }
   }
 
+  statuses.sort((a, b) => b.timestamp - a.timestamp);
   return statuses;
 }
 
