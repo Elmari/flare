@@ -74,6 +74,38 @@ program
     await startWatcher();
   });
 
+const analyze = program
+  .command('analyze')
+  .description('Run an LLM analysis on a build or PR from the current snapshot');
+
+analyze
+  .command('build <job-path>')
+  .description('Analyze a Jenkins build failure (job path as shown in the dashboard)')
+  .action(async (jobPath: string) => {
+    try {
+      const { analyzeBuildCli } = await import('./analyze-cli.js');
+      await analyzeBuildCli(jobPath);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
+analyze
+  .command('pr <repo> <id>')
+  .description('Summarize a Bitbucket PR (repo as "PROJECT/slug", id as the PR number)')
+  .action(async (repo: string, id: string) => {
+    try {
+      const prId = Number.parseInt(id, 10);
+      if (!Number.isFinite(prId)) throw new Error(`Invalid PR id: ${id}`);
+      const { analyzePrCli } = await import('./analyze-cli.js');
+      await analyzePrCli(repo, prId);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
 program
   .command('install-agent')
   .description('Install a macOS LaunchAgent that runs `flare watch` on login')
