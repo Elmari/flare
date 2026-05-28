@@ -86,7 +86,7 @@ export async function startWatcher(): Promise<void> {
 
       log.debug(`Polling cycle started (Battery: ${battery}, Interval: ${interval}s)`);
 
-      await pollAll(config);
+      await pollAll(config, interval);
 
       await new Promise((resolve) => setTimeout(resolve, interval * 1000));
     } catch (err) {
@@ -152,7 +152,7 @@ export function mergePollResults(
   };
 }
 
-async function pollAll(config: Config): Promise<void> {
+async function pollAll(config: Config, activePollIntervalSeconds: number): Promise<void> {
   const now = Date.now();
   const notified = pruneNotified(readState<NotifiedState>('notified'), now);
 
@@ -185,6 +185,8 @@ async function pollAll(config: Config): Promise<void> {
     bitbucket: merged.bitbucket,
     jenkins_fetched_at: merged.jenkinsFetchedAt,
     bitbucket_fetched_at: merged.bitbucketFetchedAt,
+    poll_interval_seconds: activePollIntervalSeconds,
+    battery_poll_interval_seconds: config.settings.battery_poll_interval_seconds,
   });
 }
 

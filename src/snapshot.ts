@@ -21,6 +21,15 @@ export interface WatcherSnapshot {
   // older consumers and the very first poll cycle still parse cleanly.
   jenkins_fetched_at?: number;
   bitbucket_fetched_at?: number;
+  // Active poll cadence at the time of this write (seconds). Reflects the
+  // battery vs AC choice the watcher just made, so readers (e.g. deck) can
+  // size their staleness thresholds to whatever flare is actually doing
+  // instead of guessing with a constant.
+  poll_interval_seconds?: number;
+  // Configured worst-case poll cadence — i.e. battery_poll_interval_seconds.
+  // Exposed separately so readers can pick a threshold that won't flag the
+  // watcher as stale just because it's idling on battery.
+  battery_poll_interval_seconds?: number;
 }
 
 let cachedPath: string | undefined;
