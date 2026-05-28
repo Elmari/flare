@@ -9,9 +9,18 @@ export const SNAPSHOT_SCHEMA_VERSION = 1;
 
 export interface WatcherSnapshot {
   schema_version: typeof SNAPSHOT_SCHEMA_VERSION;
+  // Watcher heartbeat — bumped every poll cycle regardless of fetch success.
+  // Use this to detect whether the watcher process itself is alive.
   last_poll_at: number;
   jenkins: JenkinsStatus[];
   bitbucket: BitbucketPRStatus[];
+  // Per-source liveness: when each source was last successfully fetched.
+  // Diverges from last_poll_at when a single source (Jenkins, Bitbucket) is
+  // failing while the watcher itself is healthy — readers can flag the
+  // stale source without flagging the whole watcher as dead. Optional so
+  // older consumers and the very first poll cycle still parse cleanly.
+  jenkins_fetched_at?: number;
+  bitbucket_fetched_at?: number;
 }
 
 let cachedPath: string | undefined;

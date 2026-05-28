@@ -105,8 +105,15 @@ export async function startWatcher(): Promise<void> {
 // individual poll cycles. Lets pollAll fall back to the last successful list
 // when one source fails, instead of throwing the whole cycle and freezing
 // last_poll_at — that used to make the watcher look dead to external
-// consumers (deck) on any transient Jenkins/Bitbucket hiccup.
-const lastGood: { jenkins: JenkinsStatus[]; bitbucket: BitbucketPRStatus[] } = {
+// consumers (deck) on any transient Jenkins/Bitbucket hiccup. The fetchedAt
+// fields surface per-source liveness in the snapshot so consumers can flag
+// a stale source independently of the watcher heartbeat.
+const lastGood: {
+  jenkins: JenkinsStatus[];
+  bitbucket: BitbucketPRStatus[];
+  jenkinsFetchedAt?: number;
+  bitbucketFetchedAt?: number;
+} = {
   jenkins: [],
   bitbucket: [],
 };
@@ -114,6 +121,8 @@ const lastGood: { jenkins: JenkinsStatus[]; bitbucket: BitbucketPRStatus[] } = {
 export interface PollMergeResult {
   jenkins: JenkinsStatus[];
   bitbucket: BitbucketPRStatus[];
+  jenkinsFetchedAt?: number;
+  bitbucketFetchedAt?: number;
   jenkinsError?: unknown;
   bitbucketError?: unknown;
 }
@@ -121,12 +130,22 @@ export interface PollMergeResult {
 export function mergePollResults(
   jenkinsRes: PromiseSettledResult<JenkinsStatus[]>,
   bitbucketRes: PromiseSettledResult<BitbucketPRStatus[]>,
-  fallback: { jenkins: JenkinsStatus[]; bitbucket: BitbucketPRStatus[] },
+  fallback: {
+    jenkins: JenkinsStatus[];
+    bitbucket: BitbucketPRStatus[];
+    jenkinsFetchedAt?: number;
+    bitbucketFetchedAt?: number;
+  },
+  now: number,
 ): PollMergeResult {
   return {
     jenkins: jenkinsRes.status === 'fulfilled' ? jenkinsRes.value : fallback.jenkins,
     bitbucket:
       bitbucketRes.status === 'fulfilled' ? bitbucketRes.value : fallback.bitbucket,
+    jenkinsFetchedAt:
+      jenkinsRes.status === 'fulfilled' ? now : fallback.jenkinsFetchedAt,
+    bitbucketFetchedAt:
+      bitbucketRes.status === 'fulfilled' ? now : fallback.bitbucketFetchedAt,
     jenkinsError: jenkinsRes.status === 'rejected' ? jenkinsRes.reason : undefined,
     bitbucketError:
       bitbucketRes.status === 'rejected' ? bitbucketRes.reason : undefined,
@@ -142,9 +161,15 @@ async function pollAll(config: Config): Promise<void> {
     pollBitbucket(config, notified, now),
   ]);
 
-  const merged = mergePollResults(jenkinsRes, bitbucketRes, lastGood);
-  if (jenkinsRes.status === 'fulfilled') lastGood.jenkins = jenkinsRes.value;
-  if (bitbucketRes.status === 'fulfilled') lastGood.bitbucket = bitbucketRes.value;
+  const merged = mergePollResults(jenkinsRes, bitbucketRes, lastGood, now);
+  if (jenkinsRes.status === 'fulfilled') {
+    lastGood.jenkins = jenkinsRes.value;
+    lastGood.jenkinsFetchedAt = now;
+  }
+  if (bitbucketRes.status === 'fulfilled') {
+    lastGood.bitbucket = bitbucketRes.value;
+    lastGood.bitbucketFetchedAt = now;
+  }
   if (merged.jenkinsError)
     log.warn(merged.jenkinsError, 'jenkins poll failed; reusing last known-good list');
   if (merged.bitbucketError)
@@ -158,6 +183,8 @@ async function pollAll(config: Config): Promise<void> {
     last_poll_at: now,
     jenkins: merged.jenkins,
     bitbucket: merged.bitbucket,
+    jenkins_fetched_at: merged.jenkinsFetchedAt,
+    bitbucket_fetched_at: merged.bitbucketFetchedAt,
   });
 }
 

@@ -66,3 +66,18 @@ test('writeSnapshotTo creates the parent directory if it does not exist', () => 
 
   assert.equal(fs.existsSync(target), true);
 });
+
+test('writeSnapshotTo round-trips optional per-source fetchedAt fields', () => {
+  const target = tmpFile();
+  const snapshot: WatcherSnapshot = {
+    ...sample(1_700_000_000_000),
+    jenkins_fetched_at: 1_700_000_000_000,
+    bitbucket_fetched_at: 1_699_999_700_000, // 5 min stale
+  };
+
+  writeSnapshotTo(target, snapshot);
+
+  const parsed = JSON.parse(fs.readFileSync(target, 'utf8')) as WatcherSnapshot;
+  assert.equal(parsed.jenkins_fetched_at, 1_700_000_000_000);
+  assert.equal(parsed.bitbucket_fetched_at, 1_699_999_700_000);
+});
