@@ -101,14 +101,54 @@ export async function startWatcher(): Promise<void> {
   }
 }
 
+// Per-source last-known-good cache. Lives at module scope so it survives
+// individual poll cycles. Lets pollAll fall back to the last successful list
+// when one source fails, instead of throwing the whole cycle and freezing
+// last_poll_at — that used to make the watcher look dead to external
+// consumers (deck) on any transient Jenkins/Bitbucket hiccup.
+const lastGood: { jenkins: JenkinsStatus[]; bitbucket: BitbucketPRStatus[] } = {
+  jenkins: [],
+  bitbucket: [],
+};
+
+export interface PollMergeResult {
+  jenkins: JenkinsStatus[];
+  bitbucket: BitbucketPRStatus[];
+  jenkinsError?: unknown;
+  bitbucketError?: unknown;
+}
+
+export function mergePollResults(
+  jenkinsRes: PromiseSettledResult<JenkinsStatus[]>,
+  bitbucketRes: PromiseSettledResult<BitbucketPRStatus[]>,
+  fallback: { jenkins: JenkinsStatus[]; bitbucket: BitbucketPRStatus[] },
+): PollMergeResult {
+  return {
+    jenkins: jenkinsRes.status === 'fulfilled' ? jenkinsRes.value : fallback.jenkins,
+    bitbucket:
+      bitbucketRes.status === 'fulfilled' ? bitbucketRes.value : fallback.bitbucket,
+    jenkinsError: jenkinsRes.status === 'rejected' ? jenkinsRes.reason : undefined,
+    bitbucketError:
+      bitbucketRes.status === 'rejected' ? bitbucketRes.reason : undefined,
+  };
+}
+
 async function pollAll(config: Config): Promise<void> {
   const now = Date.now();
   const notified = pruneNotified(readState<NotifiedState>('notified'), now);
 
-  const [jenkins, bitbucket] = await Promise.all([
+  const [jenkinsRes, bitbucketRes] = await Promise.allSettled([
     pollJenkins(config, notified, now),
     pollBitbucket(config, notified, now),
   ]);
+
+  const merged = mergePollResults(jenkinsRes, bitbucketRes, lastGood);
+  if (jenkinsRes.status === 'fulfilled') lastGood.jenkins = jenkinsRes.value;
+  if (bitbucketRes.status === 'fulfilled') lastGood.bitbucket = bitbucketRes.value;
+  if (merged.jenkinsError)
+    log.warn(merged.jenkinsError, 'jenkins poll failed; reusing last known-good list');
+  if (merged.bitbucketError)
+    log.warn(merged.bitbucketError, 'bitbucket poll failed; reusing last known-good list');
 
   store.set('notified', notified);
   store.set('last_poll_at', now);
@@ -116,8 +156,8 @@ async function pollAll(config: Config): Promise<void> {
   writeSnapshot({
     schema_version: SNAPSHOT_SCHEMA_VERSION,
     last_poll_at: now,
-    jenkins,
-    bitbucket,
+    jenkins: merged.jenkins,
+    bitbucket: merged.bitbucket,
   });
 }
 
